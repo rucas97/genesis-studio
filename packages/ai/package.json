@@ -1,5 +1,5 @@
 {
-  "name": "@genesis/shared",
+  "name": "@genesis/ai",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -11,12 +11,9 @@
       "default": "./src/index.ts"
     }
   },
-  "scripts": {
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "typescript": "^5.5.0",
-    "vitest": "^2.1.0"
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@genesis/shared": "*",
+    "@genesis/engines": "*"
   }
 }
