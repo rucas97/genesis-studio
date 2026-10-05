@@ -1,18 +1,9 @@
 export type PortKind =
-  | 'sequence'
-  | 'structure'
-  | 'variant'
-  | 'alignment'
-  | 'tree'
-  | 'data'
-  | 'any';
+  | 'sequence' | 'structure' | 'variant' | 'alignment'
+  | 'tree' | 'data' | 'any';
 
 export type NodeCategory =
-  | 'sequence'
-  | 'structure'
-  | 'genomics'
-  | 'utility'
-  | 'ai';
+  | 'input' | 'sequence' | 'structure' | 'genomics' | 'utility' | 'ai';
 
 export interface PortDef {
   id: string;
@@ -23,9 +14,10 @@ export interface PortDef {
 export interface ParamDef {
   key: string;
   label: string;
-  type: 'number' | 'text' | 'select';
+  type: 'number' | 'text' | 'textarea' | 'select' | 'file';
   options?: string[];
   default: unknown;
+  help?: string;
 }
 
 export interface NodeTypeDef {
@@ -39,19 +31,68 @@ export interface NodeTypeDef {
 }
 
 export const NODE_TYPES: Record<string, NodeTypeDef> = {
+  // -------------------- input --------------------
+  fetch_pdb: {
+    key: 'fetch_pdb',
+    label: 'Fetch PDB',
+    category: 'input',
+    description: 'Download a structure from RCSB',
+    inputs: [],
+    outputs: [{ id: 'struct', label: 'structure', kind: 'structure' }],
+    params: [{ key: 'pdbId', label: 'PDB ID', type: 'text', default: '4HJO' }],
+  },
   fetch_sequence: {
     key: 'fetch_sequence',
     label: 'Fetch sequence',
-    category: 'sequence',
-    description: 'Retrieve a sequence from NCBI or UniProt',
+    category: 'input',
+    description: 'Retrieve a sequence by UniProt ID',
     inputs: [],
     outputs: [{ id: 'seq', label: 'sequence', kind: 'sequence' }],
+    params: [
+      { key: 'uniprotId', label: 'UniProt ID', type: 'text', default: 'P00533', help: 'P00533 is EGFR' },
+    ],
   },
+  batch_variants: {
+    key: 'batch_variants',
+    label: 'Batch variants',
+    category: 'input',
+    description: 'Paste HGVS variants, one per line',
+    inputs: [],
+    outputs: [{ id: 'vars', label: 'variants', kind: 'variant' }],
+    params: [
+      {
+        key: 'text',
+        label: 'Variants',
+        type: 'textarea',
+        default: 'p.L858R # activating\np.T790M # gatekeeper\np.C797S # covalent resistance\np.G719S # exon 18',
+        help: 'One HGVS per line. Optional # comment.',
+      },
+    ],
+  },
+  vcf_import: {
+    key: 'vcf_import',
+    label: 'VCF import',
+    category: 'input',
+    description: 'Load variants from a VCF file',
+    inputs: [],
+    outputs: [{ id: 'vars', label: 'variants', kind: 'variant' }],
+    params: [
+      {
+        key: 'content',
+        label: 'VCF',
+        type: 'file',
+        default: '',
+        help: 'Choose a .vcf file. Content is embedded in the graph.',
+      },
+    ],
+  },
+
+  // -------------------- sequence --------------------
   blast: {
     key: 'blast',
     label: 'BLAST',
     category: 'sequence',
-    description: 'Find homologous sequences',
+    description: 'Find homologous sequences (stub)',
     inputs: [{ id: 'query', label: 'query', kind: 'sequence' }],
     outputs: [{ id: 'hits', label: 'hits', kind: 'alignment' }],
   },
@@ -59,7 +100,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     key: 'msa',
     label: 'Multiple alignment',
     category: 'sequence',
-    description: 'Align sequences (MAFFT / Clustal)',
+    description: 'Align sequences (stub)',
     inputs: [{ id: 'seqs', label: 'sequences', kind: 'alignment' }],
     outputs: [{ id: 'aln', label: 'alignment', kind: 'alignment' }],
   },
@@ -67,27 +108,12 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     key: 'tree',
     label: 'Phylogenetic tree',
     category: 'sequence',
-    description: 'Build a tree from an alignment',
+    description: 'Build a tree (stub)',
     inputs: [{ id: 'aln', label: 'alignment', kind: 'alignment' }],
     outputs: [{ id: 'tree', label: 'tree', kind: 'tree' }],
   },
-  fetch_pdb: {
-    key: 'fetch_pdb',
-    label: 'Fetch PDB',
-    category: 'structure',
-    description: 'Download a structure from RCSB',
-    inputs: [],
-    outputs: [{ id: 'struct', label: 'structure', kind: 'structure' }],
-    params: [{ key: 'pdbId', label: 'PDB ID', type: 'text', default: '4HJO' }],
-  },
-  fold: {
-    key: 'fold',
-    label: 'Fold',
-    category: 'structure',
-    description: 'Predict a structure (AlphaFold / ESMFold)',
-    inputs: [{ id: 'seq', label: 'sequence', kind: 'sequence' }],
-    outputs: [{ id: 'struct', label: 'structure', kind: 'structure' }],
-  },
+
+  // -------------------- structure --------------------
   mutate: {
     key: 'mutate',
     label: 'Apply variant',
@@ -95,7 +121,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     description: 'Apply a mutation to a structure',
     inputs: [
       { id: 'struct', label: 'structure', kind: 'structure' },
-      { id: 'var', label: 'variant', kind: 'variant' },
+      { id: 'vars', label: 'variants', kind: 'variant' },
     ],
     outputs: [{ id: 'struct', label: 'structure', kind: 'structure' }],
   },
@@ -103,7 +129,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     key: 'predict_stability',
     label: 'Predict stability',
     category: 'structure',
-    description: 'ΔΔG prediction (stub engine v0.0.1)',
+    description: 'ΔΔG prediction. Uses the active engine (stub or sidecar).',
     inputs: [
       { id: 'struct', label: 'structure', kind: 'structure' },
       { id: 'vars', label: 'variants', kind: 'variant' },
@@ -114,53 +140,86 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     key: 'docking',
     label: 'Docking',
     category: 'structure',
-    description: 'Dock a ligand into a structure',
+    description: 'Dock a ligand (stub)',
     inputs: [
       { id: 'struct', label: 'structure', kind: 'structure' },
       { id: 'ligand', label: 'ligand', kind: 'data' },
     ],
     outputs: [{ id: 'poses', label: 'poses', kind: 'data' }],
   },
-  variant_call: {
-    key: 'variant_call',
-    label: 'Variant call',
-    category: 'genomics',
-    description: 'Call variants from reads (GATK / DeepVariant)',
-    inputs: [{ id: 'reads', label: 'reads', kind: 'data' }],
-    outputs: [{ id: 'vcf', label: 'variants', kind: 'variant' }],
-  },
+
+  // -------------------- genomics --------------------
   annotate: {
     key: 'annotate',
     label: 'Annotate',
     category: 'genomics',
-    description: 'Annotate variants (VEP / SnpEff)',
+    description: 'Annotate variants (stub)',
     inputs: [{ id: 'vcf', label: 'variants', kind: 'variant' }],
     outputs: [{ id: 'ann', label: 'annotated', kind: 'variant' }],
   },
   filter: {
     key: 'filter',
-    label: 'Filter',
+    label: 'Filter by ΔΔG',
     category: 'genomics',
-    description: 'Filter variants by criteria',
-    inputs: [{ id: 'in', label: 'variants', kind: 'variant' }],
-    outputs: [{ id: 'out', label: 'variants', kind: 'variant' }],
+    description: 'Keep only variants with ΔΔG below a threshold',
+    inputs: [{ id: 'rows', label: 'results', kind: 'data' }],
+    outputs: [{ id: 'kept', label: 'results', kind: 'data' }],
+    params: [
+      { key: 'threshold', label: 'Max ΔΔG (kcal/mol)', type: 'number', default: -1.0 },
+    ],
   },
+  sort: {
+    key: 'sort',
+    label: 'Sort',
+    category: 'genomics',
+    description: 'Sort results by ΔΔG',
+    inputs: [{ id: 'rows', label: 'results', kind: 'data' }],
+    outputs: [{ id: 'sorted', label: 'results', kind: 'data' }],
+    params: [
+      {
+        key: 'direction',
+        label: 'Direction',
+        type: 'select',
+        options: ['ascending', 'descending'],
+        default: 'ascending',
+      },
+    ],
+  },
+
+  // -------------------- utility --------------------
   script: {
     key: 'script',
     label: 'Python script',
     category: 'utility',
-    description: 'Run a user script',
+    description: 'Run a user script (stub)',
     inputs: [{ id: 'in', label: 'input', kind: 'data' }],
     outputs: [{ id: 'out', label: 'output', kind: 'data' }],
+    params: [{ key: 'code', label: 'Code', type: 'textarea', default: '# your code here' }],
   },
-  export: {
-    key: 'export',
-    label: 'Export',
+  export_csv: {
+    key: 'export_csv',
+    label: 'Export CSV',
     category: 'utility',
-    description: 'Write results to a file',
-    inputs: [{ id: 'in', label: 'data', kind: 'data' }],
+    description: 'Write results to a CSV file',
+    inputs: [{ id: 'rows', label: 'results', kind: 'data' }],
     outputs: [],
+    params: [
+      { key: 'filename', label: 'Filename', type: 'text', default: 'results.csv' },
+    ],
   },
+  export_json: {
+    key: 'export_json',
+    label: 'Export JSON',
+    category: 'utility',
+    description: 'Write results to a JSON file',
+    inputs: [{ id: 'rows', label: 'results', kind: 'data' }],
+    outputs: [],
+    params: [
+      { key: 'filename', label: 'Filename', type: 'text', default: 'results.json' },
+    ],
+  },
+
+  // -------------------- ai --------------------
   ai_hypothesis: {
     key: 'ai_hypothesis',
     label: 'AI hypothesis',
@@ -172,9 +231,19 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
 };
 
 export const CATEGORY_COLORS: Record<NodeCategory, string> = {
-  sequence: '#66ccff',
+  input: '#66ccff',
+  sequence: '#88ddff',
   structure: '#88ff88',
   genomics: '#ffcc66',
   utility: '#8899aa',
   ai: '#cc88ff',
+};
+
+export const CATEGORY_LABELS: Record<NodeCategory, string> = {
+  input: 'Input',
+  sequence: 'Sequence',
+  structure: 'Structure',
+  genomics: 'Genomics',
+  utility: 'Utility',
+  ai: 'AI',
 };

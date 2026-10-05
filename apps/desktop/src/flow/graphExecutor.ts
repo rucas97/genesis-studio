@@ -8,6 +8,8 @@ import { getCoScientist } from '@genesis/ai';
 import { NODE_TYPES } from './nodeTypes';
 import type { NodeInstance, EdgeInstance } from './NodeEditor';
 import { EGFR_VARIANTS } from './flowData';
+import { parseVCF, type ParsedVariant } from './vcfParser';
+import { parseBatchVariants } from './batchVariants';
 
 export interface PipelineRow {
   variant: Variant;
@@ -20,6 +22,7 @@ export interface ExecutionContext {
   molecule: Molecule;
   onActiveNode: (nodeId: string | null) => void;
   onProgress: (done: number, total: number) => void;
+  onExport?: (filename: string, content: string, mime: string) => void;
 }
 
 export interface ExecutionResult {
@@ -29,10 +32,6 @@ export interface ExecutionResult {
   totalMs: number;
 }
 
-/**
- * Kahn topological sort. Returns nodes in an order where every node's
- * inputs have been processed before the node itself.
- */
 export function topoSort(
   nodes: NodeInstance[],
   edges: EdgeInstance[]
@@ -59,10 +58,6 @@ export function topoSort(
   return out;
 }
 
-/**
- * Execute the graph. Each node produces a map of output-port -> value.
- * Values flow along edges to downstream nodes' input ports.
- */
 export async function executeGraph(
   nodes: NodeInstance[],
   edges: EdgeInstance[],
@@ -76,12 +71,11 @@ export async function executeGraph(
 
   for (const node of sorted) {
     ctx.onActiveNode(node.id);
-    await sleep(120);
+    await sleep(100);
 
     const def = NODE_TYPES[node.type];
     if (!def) continue;
 
-    // Gather inputs.
     const inputs: Record<string, unknown> = {};
     for (const port of def.inputs) {
       const edge = edges.find(
@@ -126,13 +120,50 @@ async function executeNode(
       return { outputs: out };
     }
 
+    case 'fetch_sequence': {
+      const uniprotId = (node.params.uniprotId as string) || '';
+      // Stub: return an ID token, not an actual fetch.
+      out.set('seq', { uniprotId });
+      return { outputs: out };
+    }
+
+    case 'batch_variants': {
+      const text = String(node.params.text ?? '');
+      const parsed = parseBatchVariants(text);
+      out.set('vars', parsed);
+      return { outputs: out };
+    }
+
+    case 'vcf_import': {
+      const content = String(node.params.content ?? '');
+      if (!content) {
+        out.set('vars', []);
+        return { outputs: out };
+      }
+      const parsed = parseVCF(content);
+      out.set('vars', parsed);
+      return { outputs: out };
+    }
+
     case 'predict_stability': {
-      // If an upstream node provided variants, score those. Otherwise
-      // fall back to the curated EGFR set.
-      const total = EGFR_VARIANTS.length;
+      const incoming = inputs.vars as ParsedVariant[] | undefined;
+      const list: ParsedVariant[] = incoming && incoming.length > 0
+        ? incoming
+        : EGFR_VARIANTS.map((v) => ({
+            hgvs: v.hgvs,
+            position: v.position,
+            ref: v.ref,
+            alt: v.alt,
+            kind: v.kind === 'substitution' ? 'substitution' as const
+              : v.kind === 'deletion' ? 'deletion' as const
+              : 'insertion' as const,
+            note: v.note,
+          }));
+
+      const total = list.length;
       const scored: PipelineRow[] = [];
       for (let i = 0; i < total; i++) {
-        const src = EGFR_VARIANTS[i];
+        const src = list[i];
         const variant: Variant = {
           id: newVariantId(),
           projectId: ctx.projectId,
@@ -164,6 +195,26 @@ async function executeNode(
       return { outputs: out, rows: scored };
     }
 
+    case 'filter': {
+      const incoming = (inputs.rows as PipelineRow[] | undefined) ?? currentRows;
+      const threshold = Number(node.params.threshold ?? -1);
+      const kept = incoming.filter((r) => r.prediction.deltaDeltaG <= threshold);
+      out.set('kept', kept);
+      return { outputs: out, rows: kept };
+    }
+
+    case 'sort': {
+      const incoming = (inputs.rows as PipelineRow[] | undefined) ?? currentRows;
+      const dir = String(node.params.direction ?? 'ascending');
+      const sorted = [...incoming].sort((a, b) =>
+        dir === 'ascending'
+          ? a.prediction.deltaDeltaG - b.prediction.deltaDeltaG
+          : b.prediction.deltaDeltaG - a.prediction.deltaDeltaG
+      );
+      out.set('sorted', sorted);
+      return { outputs: out, rows: sorted };
+    }
+
     case 'ai_hypothesis': {
       const evidence = inputs.evidence as PipelineRow[] | undefined;
       const rowsForAI = evidence ?? currentRows;
@@ -183,20 +234,63 @@ async function executeNode(
       return { outputs: out };
     }
 
-    case 'export': {
-      const data = inputs.in ?? null;
-      out.set('done', { exported: true, data });
+    case 'export_csv': {
+      const data = (inputs.rows as PipelineRow[] | undefined) ?? currentRows;
+      const filename = String(node.params.filename ?? 'results.csv');
+      const lines = ['rank,hgvs,ddg_lo,ddg,ddg_hi,note'];
+      data.forEach((r, i) => {
+        const [lo, hi] = r.prediction.deltaDeltaGCI;
+        lines.push(
+          [
+            i + 1,
+            r.variant.hgvs,
+            lo.toFixed(2),
+            r.prediction.deltaDeltaG.toFixed(2),
+            hi.toFixed(2),
+            csvEscape(r.note),
+          ].join(',')
+        );
+      });
+      const content = lines.join('\n') + '\n';
+      if (ctx.onExport) ctx.onExport(filename, content, 'text/csv');
+      out.set('done', { filename, rows: data.length });
+      return { outputs: out };
+    }
+
+    case 'export_json': {
+      const data = (inputs.rows as PipelineRow[] | undefined) ?? currentRows;
+      const filename = String(node.params.filename ?? 'results.json');
+      const content = JSON.stringify(
+        data.map((r, i) => ({
+          rank: i + 1,
+          hgvs: r.variant.hgvs,
+          deltaDeltaG: r.prediction.deltaDeltaG,
+          deltaDeltaGCI: r.prediction.deltaDeltaGCI,
+          method: r.prediction.method,
+          methodVersion: r.prediction.methodVersion,
+          note: r.note,
+        })),
+        null,
+        2
+      );
+      if (ctx.onExport) ctx.onExport(filename, content, 'application/json');
+      out.set('done', { filename, rows: data.length });
       return { outputs: out };
     }
 
     default: {
-      // Nodes without a real implementation pass through null on every
-      // output. The graph still executes; the outputs are placeholders.
       const def = NODE_TYPES[node.type];
       for (const p of def.outputs) out.set(p.id, null);
       return { outputs: out };
     }
   }
+}
+
+function csvEscape(s: string): string {
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
 }
 
 function sleep(ms: number): Promise<void> {

@@ -30,14 +30,14 @@ type SidecarState =
 
 function buildInitialGraph(): { nodes: NodeInstance[]; edges: EdgeInstance[] } {
   const a = createNode('fetch_pdb', 80, 100);
-  const b = createNode('predict_stability', 360, 100);
-  const c = createNode('ai_hypothesis', 640, 100);
-  const d = createNode('export', 900, 100);
+  const b = createNode('batch_variants', 340, 100);
+  const c = createNode('predict_stability', 620, 100);
+  const d = createNode('ai_hypothesis', 900, 100);
   const nodes = [a, b, c, d];
   const edges: EdgeInstance[] = [
-    { id: 'e_init_1', from: { nodeId: a.id, portId: 'struct' }, to: { nodeId: b.id, portId: 'struct' } },
-    { id: 'e_init_2', from: { nodeId: b.id, portId: 'results' }, to: { nodeId: c.id, portId: 'evidence' } },
-    { id: 'e_init_3', from: { nodeId: c.id, portId: 'hyp' }, to: { nodeId: d.id, portId: 'in' } },
+    { id: 'e1', from: { nodeId: a.id, portId: 'struct' }, to: { nodeId: c.id, portId: 'struct' } },
+    { id: 'e2', from: { nodeId: b.id, portId: 'vars' }, to: { nodeId: c.id, portId: 'vars' } },
+    { id: 'e3', from: { nodeId: c.id, portId: 'results' }, to: { nodeId: d.id, portId: 'evidence' } },
   ];
   return { nodes, edges };
 }
@@ -62,11 +62,7 @@ export function FlowTab() {
     [projectId]
   );
 
-  const initial = useMemo(() => {
-    const saved = loadAutosavedGraph();
-    return saved ?? buildInitialGraph();
-  }, []);
-
+  const initial = useMemo(() => loadAutosavedGraph() ?? buildInitialGraph(), []);
   const [nodes, setNodes] = useState<NodeInstance[]>(initial.nodes);
   const [edges, setEdges] = useState<EdgeInstance[]>(initial.edges);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -93,24 +89,15 @@ export function FlowTab() {
     void (async () => {
       const health = await tryRegisterSidecar();
       if (cancelled) return;
-      if (!health) {
-        setSidecar({ kind: 'absent' });
-        refreshEngine();
-        return;
-      }
-      if (health.isRealPredictor) {
-        setSidecar({ kind: 'real', runner: health.runner, version: health.version });
-      } else {
-        setSidecar({ kind: 'stub', runner: health.runner, version: health.version });
-      }
+      if (!health) { setSidecar({ kind: 'absent' }); refreshEngine(); return; }
+      if (health.isRealPredictor) setSidecar({ kind: 'real', runner: health.runner, version: health.version });
+      else setSidecar({ kind: 'stub', runner: health.runner, version: health.version });
       refreshEngine();
     })();
     return () => { cancelled = true; };
   }, [refreshEngine]);
 
-  useEffect(() => {
-    autosaveGraph(nodes, edges);
-  }, [nodes, edges]);
+  useEffect(() => { autosaveGraph(nodes, edges); }, [nodes, edges]);
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null;
 
@@ -120,7 +107,7 @@ export function FlowTab() {
   }, []);
 
   const handleAddNode = useCallback((typeKey: string) => {
-    const node = createNode(typeKey, 200 + Math.random() * 200, 260 + Math.random() * 100);
+    const node = createNode(typeKey, 300 + Math.random() * 200, 300 + Math.random() * 100);
     setNodes((n) => [...n, node]);
     setSelectedNodeId(node.id);
   }, []);
@@ -144,29 +131,29 @@ export function FlowTab() {
     downloadGraph(nodes, edges, `genesis-flow-${Date.now()}.json`);
   }, [nodes, edges]);
 
-  const handleLoadClick = useCallback(() => {
-    fileInputRef.current?.click();
+  const handleLoadClick = useCallback(() => fileInputRef.current?.click(), []);
+
+  const handleFileChosen = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const { deserializeGraph } = await import('../flow/graphSerialization');
+      const g = deserializeGraph(text);
+      setNodes(g.nodes); setEdges(g.edges); setSelectedNodeId(null);
+    } catch (err) {
+      window.alert(`Could not load graph: ${(err as Error).message}`);
+    } finally { e.target.value = ''; }
   }, []);
 
-  const handleFileChosen = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      try {
-        const text = await file.text();
-        const { deserializeGraph } = await import('../flow/graphSerialization');
-        const g = deserializeGraph(text);
-        setNodes(g.nodes);
-        setEdges(g.edges);
-        setSelectedNodeId(null);
-      } catch (err) {
-        window.alert(`Could not load graph: ${(err as Error).message}`);
-      } finally {
-        e.target.value = '';
-      }
-    },
-    []
-  );
+  const handleExport = useCallback((filename: string, content: string, mime: string) => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  }, []);
 
   const handleRun = useCallback(async () => {
     if (running) return;
@@ -175,9 +162,7 @@ export function FlowTab() {
     setProgress({ done: 0, total: 0 });
 
     await log.append({
-      projectId,
-      mode: 'flow',
-      actor: 'user',
+      projectId, mode: 'flow', actor: 'user',
       type: 'flow.run.start',
       payload: { label: 'EGFR pipeline', nodeCount: nodes.length },
       timestamp: new Date().toISOString(),
@@ -186,10 +171,10 @@ export function FlowTab() {
 
     try {
       const result = await executeGraph(nodes, edges, {
-        projectId,
-        molecule,
+        projectId, molecule,
         onActiveNode: (id) => setActiveNodeIds(id ? [id] : []),
         onProgress: (done, total) => setProgress({ done, total }),
+        onExport: handleExport,
       });
       setRows(result.rows);
       setLastRunMs(result.totalMs);
@@ -197,9 +182,7 @@ export function FlowTab() {
       setEngineVersion(result.engineVersion);
 
       await log.append({
-        projectId,
-        mode: 'flow',
-        actor: 'system',
+        projectId, mode: 'flow', actor: 'system',
         type: 'flow.run.complete',
         payload: { rows: result.rows.length, engine: result.engineName },
         timestamp: new Date().toISOString(),
@@ -211,12 +194,10 @@ export function FlowTab() {
       setActiveNodeIds([]);
       setRunning(false);
     }
-  }, [running, nodes, edges, log, projectId, molecule, refreshActionCount]);
+  }, [running, nodes, edges, log, projectId, molecule, refreshActionCount, handleExport]);
 
   const handleSendToPlay = useCallback(
-    (row: PipelineRow) => {
-      sendToPlay({ variant: row.variant, molecule });
-    },
+    (row: PipelineRow) => sendToPlay({ variant: row.variant, molecule }),
     [sendToPlay, molecule]
   );
 
@@ -227,14 +208,9 @@ export function FlowTab() {
       <div className="flow-main">
         <div className="flow-editor-wrap">
           <NodeEditor
-            nodes={nodes}
-            edges={edges}
-            onChange={handleChange}
-            selectedNodeId={selectedNodeId}
-            onSelectNode={setSelectedNodeId}
-            activeNodeIds={activeNodeIds}
-            onRun={handleRun}
-            running={running}
+            nodes={nodes} edges={edges} onChange={handleChange}
+            selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId}
+            activeNodeIds={activeNodeIds} onRun={handleRun} running={running}
           />
         </div>
         <div className="flow-results-wrap">
@@ -245,49 +221,34 @@ export function FlowTab() {
       <aside className="flow-sidebar">
         <NodePalette onAdd={handleAddNode} />
 
-        <NodeParamsPanel
-          node={selectedNode}
-          onChange={handleParamChange}
-          onDelete={handleDeleteNode}
-        />
+        <NodeParamsPanel node={selectedNode} onChange={handleParamChange} onDelete={handleDeleteNode} />
 
         <div className="panel">
           <div className="panel-label">Graph</div>
           <div className="panel-value">
-            {nodes.length} node{nodes.length === 1 ? '' : 's'} · {edges.length} edge
-            {edges.length === 1 ? '' : 's'}
+            {nodes.length} node{nodes.length === 1 ? '' : 's'} · {edges.length} edge{edges.length === 1 ? '' : 's'}
           </div>
           <div className="graph-buttons">
             <button className="zoom-btn" onClick={handleSave}>Save</button>
             <button className="zoom-btn" onClick={handleLoadClick}>Load</button>
           </div>
           <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/json,.json"
-            style={{ display: 'none' }}
-            onChange={handleFileChosen}
+            ref={fileInputRef} type="file" accept="application/json,.json"
+            style={{ display: 'none' }} onChange={handleFileChosen}
           />
-          <p className="panel-hint">
-            Autosaved to this browser. Save/Load moves graphs between machines.
-          </p>
         </div>
 
         <div className="panel">
           <div className="panel-label">Engine</div>
           <div className="panel-value mono">{engineName} v{engineVersion}</div>
           <SidecarStatus state={sidecar} />
-          <p className="panel-hint mono">
-            registered: {availableEngines.join(', ')}
-          </p>
+          <p className="panel-hint mono">registered: {availableEngines.join(', ')}</p>
         </div>
 
         {running && progress.total > 0 && (
           <div className="panel">
             <div className="panel-label">Progress</div>
-            <div className="panel-value mono">
-              {progress.done} / {progress.total}
-            </div>
+            <div className="panel-value mono">{progress.done} / {progress.total}</div>
           </div>
         )}
         {!running && lastRunMs !== null && (
@@ -296,35 +257,19 @@ export function FlowTab() {
             <div className="panel-value mono">{lastRunMs} ms</div>
           </div>
         )}
-
-        <div className="panel">
-          <div className="panel-label">Editor</div>
-          <ul className="shortcuts">
-            <li>Click a node to edit its parameters</li>
-            <li>Drag a node to move it</li>
-            <li>Drag from a port to another port to connect</li>
-            <li>Click an edge to delete it</li>
-            <li>Select a node, press Delete to remove it</li>
-            <li>Scroll to zoom, drag empty space to pan</li>
-            <li>Drag a node type from the palette</li>
-          </ul>
-        </div>
       </aside>
     </div>
   );
 }
 
 function SidecarStatus({ state }: { state: SidecarState }) {
-  if (state.kind === 'checking') {
-    return <div className="sidecar-status checking">sidecar: checking…</div>;
-  }
+  if (state.kind === 'checking') return <div className="sidecar-status checking">sidecar: checking…</div>;
   if (state.kind === 'absent') {
     return (
       <div className="sidecar-status absent">
         sidecar: absent
         <div className="sidecar-note">
-          Start the Python service (<code>python server.py</code>) to enable
-          the sidecar path. The stub engine is active until then.
+          Start the Python service (<code>python server.py</code>) to enable the sidecar path.
         </div>
       </div>
     );
@@ -334,9 +279,7 @@ function SidecarStatus({ state }: { state: SidecarState }) {
       <div className="sidecar-status stub">
         sidecar: connected · {state.runner}
         <div className="sidecar-note">
-          The sidecar is running its stub runner. Numbers are deterministic
-          placeholders, not science. Install ThermoMPNN in a Python 3.11/3.12
-          environment to enable real predictions.
+          Stub runner. Numbers are deterministic placeholders, not science.
         </div>
       </div>
     );
@@ -344,9 +287,7 @@ function SidecarStatus({ state }: { state: SidecarState }) {
   return (
     <div className="sidecar-status real">
       sidecar: connected · {state.runner}
-      <div className="sidecar-note">
-        Real predictions. ThermoMPNN is active.
-      </div>
+      <div className="sidecar-note">Real predictions. ThermoMPNN is active.</div>
     </div>
   );
 }

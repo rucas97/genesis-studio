@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ProjectProvider, useProject, type Tab } from './state/ProjectContext';
 import { PlayTab } from './tabs/PlayTab';
 import { FlowTab } from './tabs/FlowTab';
 import { EmergenceTab } from './tabs/EmergenceTab';
+import { SessionLogPanel } from './panels/SessionLogPanel';
 
 export function App() {
   return (
@@ -19,7 +20,9 @@ function Shell() {
     actionCount,
     logVerified,
     verifyLog,
+    log,
   } = useProject();
+  const [logOpen, setLogOpen] = useState(false);
 
   return (
     <div className="app">
@@ -37,6 +40,12 @@ function Shell() {
           </TabButton>
         </nav>
         <div className="topbar-right">
+          <button
+            className="log-toggle"
+            onClick={() => setLogOpen((v) => !v)}
+          >
+            {logOpen ? 'Hide log' : 'Show log'}
+          </button>
           <span className="action-count">
             {actionCount} action{actionCount === 1 ? '' : 's'}
           </span>
@@ -50,7 +59,7 @@ function Shell() {
             disabled={actionCount === 0}
             onClick={verifyLog}
           >
-            Verify session
+            Verify
           </button>
           <span className="badge">Research-use-only</span>
         </div>
@@ -60,6 +69,11 @@ function Shell() {
         {activeTab === 'flow' && <FlowTab />}
         {activeTab === 'emergence' && <EmergenceTab />}
       </main>
+      {logOpen && (
+        <div className="log-drawer">
+          <SessionLogPanel log={log} actionCount={actionCount} />
+        </div>
+      )}
     </div>
   );
 }

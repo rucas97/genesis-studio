@@ -986,3 +986,392 @@ button.send-to-play:hover {
   color: #778;
   line-height: 1.5;
 }
+
+/* ============================================================
+   Protein library panel
+   ============================================================ */
+
+.protein-library {
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+}
+.protein-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding-right: 4px;
+}
+.protein-item {
+  background: #0e1216;
+  border: 1px solid #1a1f24;
+  border-radius: 4px;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: #c8d4dc;
+  transition: border-color 100ms, background 100ms;
+}
+.protein-item:hover {
+  border-color: #2a3a44;
+  background: #12171c;
+}
+.protein-item.active {
+  border-color: #66ccff;
+  background: #0f1720;
+}
+.protein-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 2px;
+}
+.protein-gene {
+  font-size: 12px;
+  font-weight: 600;
+  color: #eaeaea;
+}
+.protein-pdb {
+  font-size: 10px;
+  font-family: ui-monospace, Menlo, monospace;
+  color: #556;
+}
+.protein-name {
+  font-size: 11px;
+  color: #a8b4bc;
+  line-height: 1.3;
+  margin-bottom: 2px;
+}
+.protein-disease {
+  font-size: 10px;
+  color: #667;
+}
+
+/* ============================================================
+   Session log drawer
+   ============================================================ */
+
+.log-toggle {
+  background: transparent;
+  border: 1px solid #2a3a44;
+  color: #8899aa;
+  padding: 4px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.log-toggle:hover { color: #eaeaea; border-color: #667; }
+
+.log-drawer {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  width: 480px;
+  max-height: 50vh;
+  background: #0c0c0c;
+  border-left: 1px solid #1f1f1f;
+  border-top: 1px solid #1f1f1f;
+  box-shadow: -4px -4px 24px rgba(0, 0, 0, 0.5);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+}
+
+.session-log {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 12px 14px;
+  max-height: none;
+}
+.session-log .panel-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.log-count {
+  font-size: 10px;
+  color: #66ccff;
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+.log-scroll {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+}
+
+.log-empty {
+  color: #556;
+  font-size: 12px;
+  padding: 20px;
+  text-align: center;
+}
+
+.log-row {
+  display: grid;
+  grid-template-columns: 28px 50px 1fr 60px;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid #141414;
+  align-items: baseline;
+}
+.log-index { color: #556; }
+.log-mode {
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+}
+.log-type {
+  color: #b0bcc4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.log-summary {
+  display: none;
+}
+.log-time { color: #556; text-align: right; }
+
+/* Slightly bigger drawer on wide screens */
+@media (min-width: 1400px) {
+  .log-drawer { width: 600px; }
+  .log-row { grid-template-columns: 28px 50px 1fr 1fr 60px; }
+  .log-summary { display: block; color: #778; }
+}
+
+/* ============================================================
+   Node palette — bigger, search, collapsible
+   ============================================================ */
+
+.node-palette {
+  background: #0d0d0d;
+  border: 1px solid #1a1f24;
+  border-radius: 6px;
+  padding: 14px;
+  max-height: 480px;
+  overflow-y: auto;
+}
+.node-palette-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.node-palette-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: #8899aa;
+  font-weight: 500;
+}
+.node-palette-search {
+  background: #0a0a0a;
+  border: 1px solid #1f262c;
+  color: #eaeaea;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+.node-palette-search:focus { border-color: #66ccff; }
+
+.node-palette-group { margin-bottom: 14px; }
+.node-palette-group-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  padding: 0 0 8px 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  opacity: 0.9;
+  width: 100%;
+  text-align: left;
+}
+.palette-caret {
+  font-size: 10px;
+  color: #556;
+}
+.palette-count {
+  margin-left: auto;
+  font-size: 10px;
+  color: #556;
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+.palette-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.node-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #c8d4dc;
+  cursor: grab;
+  transition: background 100ms, color 100ms;
+  border: 1px solid transparent;
+}
+.node-palette-item:hover {
+  background: #16191c;
+  color: #eaeaea;
+  border-color: #1f262c;
+}
+.node-palette-item:active { cursor: grabbing; }
+.palette-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.palette-item-label {
+  font-size: 14px;
+}
+.node-palette-hint {
+  font-size: 11px;
+  color: #556;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #1a1f24;
+  line-height: 1.5;
+}
+.node-palette-empty {
+  color: #556;
+  font-size: 12px;
+  padding: 20px;
+  text-align: center;
+  font-style: italic;
+}
+
+/* Sidebars slightly wider */
+
+.play-sidebar,
+.flow-sidebar {
+  width: 380px !important;
+}
+
+/* ============================================================
+   Tool belt
+   ============================================================ */
+
+.tool-belt {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: rgba(10, 12, 15, 0.94);
+  border: 1px solid #1a1f24;
+  border-radius: 10px;
+  padding: 8px 12px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+  z-index: 10;
+  max-width: calc(100% - 32px);
+}
+.tool-belt-tools {
+  display: flex;
+  gap: 4px;
+}
+.tool-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #8899aa;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 120ms;
+  min-width: 56px;
+}
+.tool-btn:hover { color: #eaeaea; background: #16191c; }
+.tool-btn.active {
+  color: #66ccff;
+  background: #0f1720;
+  border-color: #2a4a5a;
+}
+.tool-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+.tool-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.1px;
+}
+
+.tool-belt-info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-left: 14px;
+  border-left: 1px solid #1a1f24;
+  font-size: 11px;
+  color: #778;
+  min-height: 34px;
+}
+.tool-hint { max-width: 220px; line-height: 1.4; }
+.tool-readout {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: ui-monospace, Menlo, monospace;
+  color: #66ccff;
+  font-size: 12px;
+}
+.tool-clear {
+  background: transparent;
+  border: 1px solid #2a3a44;
+  color: #8899aa;
+  border-radius: 3px;
+  padding: 1px 6px;
+  cursor: pointer;
+  font-size: 10px;
+  font-family: inherit;
+}
+.tool-clear:hover { color: #ff8888; border-color: #ff8888; }
+
+/* ============================================================
+   Params panel additions
+   ============================================================ */
+
+.params-textarea {
+  font-family: ui-monospace, Menlo, monospace !important;
+  font-size: 12px !important;
+  resize: vertical;
+  min-height: 100px;
+  line-height: 1.5;
+}
+.params-help {
+  font-size: 10px;
+  color: #667;
+  margin-top: 4px;
+  line-height: 1.4;
+}
