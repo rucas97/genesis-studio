@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Canvas } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
   loadPDB,
@@ -8,6 +8,7 @@ import {
   type CAAtom,
   type PDBSource,
 } from './pdbLoader';
+import { CameraControls } from './CameraControls';
 import type { PickedResidue } from '../state/usePlaySession';
 
 export interface ProteinViewerProps {
@@ -27,6 +28,9 @@ export function ProteinViewer({
 }: ProteinViewerProps) {
   const [atoms, setAtoms] = useState<CAAtom[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const draggingRef = useRef(false);
+  const resetKeyRef = useRef(0);
+  const [resetKey, setResetKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,6 +50,11 @@ export function ProteinViewer({
     };
   }, [pdbId, onSourceKnown]);
 
+  const handleResetView = () => {
+    resetKeyRef.current += 1;
+    setResetKey(resetKeyRef.current);
+  };
+
   if (error) {
     return (
       <div className="placeholder">
@@ -61,40 +70,63 @@ export function ProteinViewer({
   if (!atoms) return <div className="placeholder">Loading {pdbId}…</div>;
 
   return (
-    <Canvas
-      camera={{ position: [0, 0, 90], fov: 45, near: 0.1, far: 1000 }}
-      style={{ background: '#0a0a0a' }}
-      onPointerMissed={() => onPickResidue(null)}
-    >
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[20, 20, 20]} intensity={0.9} />
-      <directionalLight position={[-20, -10, -20]} intensity={0.3} />
-      <RotatingGroup>
+    <div className="protein-viewer">
+      <Canvas
+        key={resetKey}
+        camera={{ position: [0, 0, 90], fov: 45, near: 0.5, far: 5000 }}
+        style={{ background: '#0a0a0a' }}
+        onPointerMissed={() => {
+          // Ignore clicks that were actually the end of a drag.
+          if (draggingRef.current) return;
+          onPickResidue(null);
+        }}
+      >
+        <ambientLight intensity={0.5} />
+        <directionalLight position={[20, 20, 20]} intensity={0.9} />
+        <directionalLight position={[-20, -10, -20]} intensity={0.3} />
+
+        <CameraControls
+          draggingRef={draggingRef}
+          autoRotate
+          autoRotateSpeed={0.15}
+          idleDelay={2.5}
+        />
+
         <ProteinMesh
           atoms={atoms}
           pickedResidueNumber={pickedResidueNumber}
           mutatedResidueNumber={mutatedResidueNumber}
+          draggingRef={draggingRef}
           onPickResidue={onPickResidue}
         />
-      </RotatingGroup>
-    </Canvas>
+      </Canvas>
+
+      <div className="viewer-hint">
+        <strong>drag</strong> orbit · <strong>right-drag</strong> or{' '}
+        <strong>shift-drag</strong> pan · <strong>scroll</strong> zoom
+        <button className="viewer-reset" onClick={handleResetView}>
+          Reset view
+        </button>
+      </div>
+    </div>
   );
 }
 
-function RotatingGroup({ children }: { children: ReactNode }) {
-  const ref = useRef<THREE.Group>(null);
-  useFrame((_, delta) => { if (ref.current) ref.current.rotation.y += delta * 0.25; });
-  return <group ref={ref}>{children}</group>;
-}
-
-function ProteinMesh({
-  atoms, pickedResidueNumber, mutatedResidueNumber, onPickResidue,
-}: {
+interface ProteinMeshProps {
   atoms: CAAtom[];
   pickedResidueNumber: number | null;
   mutatedResidueNumber: number | null;
+  draggingRef: React.MutableRefObject<boolean>;
   onPickResidue: (picked: PickedResidue | null) => void;
-}) {
+}
+
+function ProteinMesh({
+  atoms,
+  pickedResidueNumber,
+  mutatedResidueNumber,
+  draggingRef,
+  onPickResidue,
+}: ProteinMeshProps) {
   const line = useMemo(() => {
     const positions = new Float32Array(atoms.length * 3);
     atoms.forEach((a, i) => {
@@ -115,13 +147,21 @@ function ProteinMesh({
         const isMutated = a.residueNumber === mutatedResidueNumber;
         let color = 0x88aaff;
         let size = 0.55;
-        if (isMutated) { color = 0xff6644; size = 1.1; }
-        if (isPicked) { color = 0xffcc00; size = 1.3; }
+        if (isMutated) {
+          color = 0xff6644;
+          size = 1.1;
+        }
+        if (isPicked) {
+          color = 0xffcc00;
+          size = 1.3;
+        }
         return (
           <mesh
             key={i}
             position={[a.x, a.y, a.z]}
             onClick={(e) => {
+              // A click that ended a drag should not pick.
+              if (draggingRef.current) return;
               e.stopPropagation();
               onPickResidue({
                 index: i,
