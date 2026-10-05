@@ -26,12 +26,21 @@ Complex disease is an emergent phenomenon. It cannot be predicted from a formula
 
 ## Status
 
-Pre-alpha. Concept and architecture phase.
+Pre-alpha. Architecture phase. The shared data model and event log are committed and tested.
+
+## Getting started
+
+```bash
+npm install
+npm test
+```
+
+Requires Node 20+ (for `crypto.subtle`).
 
 ## Structure
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the system design and [ROADMAP.md](./ROADMAP.md) for the build path.
+See ARCHITECTURE.md for the system design and ROADMAP.md for the build path.
 
 ## License
 
-MIT (see LICENSE).
+MIT (see LICENSE). Research-use-only. Not a medical device.
