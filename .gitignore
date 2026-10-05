@@ -1,0 +1,33 @@
+# Node
+node_modules/
+dist/
+build/
+.next/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Tauri / Rust
+target/
+
+# Data (large files not committed)
+data/reference/*
+!data/reference/.gitkeep
+*.pdb
+*.cif
+*.bam
+*.vcf.gz
+
+# Env
+.env
+.env.local
+
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
