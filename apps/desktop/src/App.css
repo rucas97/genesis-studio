@@ -844,3 +844,145 @@ button.send-to-play:hover {
   color: #eaeaea;
   border-color: #667;
 }
+
+/* ============================================================
+   Node parameters panel
+   ============================================================ */
+
+.params-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.params-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.params-category {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+}
+.params-delete {
+  background: transparent;
+  border: 1px solid #3a2020;
+  color: #ff8888;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.params-delete:hover {
+  background: rgba(255, 100, 100, 0.08);
+  border-color: #ff8888;
+}
+.params-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: #eaeaea;
+}
+.params-section {
+  border-top: 1px solid #1a1f24;
+  padding-top: 10px;
+  margin-top: 4px;
+}
+.params-empty {
+  font-size: 11px;
+  color: #556;
+  font-style: italic;
+}
+.params-port-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.params-port-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid #66ccff;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+.params-port-dot.out { border-color: #88ff88; }
+.params-port-label { color: #c8d4dc; flex: 1; }
+.params-port-kind {
+  font-size: 10px;
+  color: #556;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.params-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+.params-field-label {
+  font-size: 11px;
+  color: #778;
+}
+.params-input {
+  background: #0a0a0a;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 8px 10px;
+  color: #eaeaea;
+  font-size: 13px;
+  font-family: ui-monospace, Menlo, monospace;
+  outline: none;
+}
+.params-input:focus { border-color: #66ccff; }
+
+.params-id {
+  font-size: 10px;
+  font-family: ui-monospace, Menlo, monospace;
+  color: #556;
+  word-break: break-all;
+}
+
+/* Graph buttons */
+
+.graph-buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+/* Engine status */
+
+.engine-status {
+  font-size: 10px;
+  color: #556;
+  font-family: ui-monospace, Menlo, monospace;
+  margin-top: 4px;
+}
+
+/* ============================================================
+   Sidecar status
+   ============================================================ */
+
+.sidecar-status {
+  font-size: 11px;
+  font-family: ui-monospace, Menlo, monospace;
+  margin-top: 6px;
+  line-height: 1.5;
+}
+.sidecar-status.checking { color: #8899aa; }
+.sidecar-status.absent   { color: #ff8866; }
+.sidecar-status.stub     { color: #ffcc66; }
+.sidecar-status.real     { color: #88ff88; }
+.sidecar-note {
+  margin-top: 6px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 10px;
+  color: #778;
+  line-height: 1.5;
+}

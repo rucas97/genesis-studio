@@ -25,6 +25,8 @@ export interface NodeEditorProps {
   nodes: NodeInstance[];
   edges: EdgeInstance[];
   onChange: (nodes: NodeInstance[], edges: EdgeInstance[]) => void;
+  selectedNodeId: string | null;
+  onSelectNode: (id: string | null) => void;
   activeNodeIds?: string[];
   onRun?: () => void;
   running?: boolean;
@@ -77,19 +79,8 @@ interface Viewport {
 }
 
 type Interaction =
-  | {
-      kind: 'node';
-      nodeId: string;
-      offsetX: number;
-      offsetY: number;
-    }
-  | {
-      kind: 'pan';
-      startX: number;
-      startY: number;
-      vpX: number;
-      vpY: number;
-    }
+  | { kind: 'node'; nodeId: string; offsetX: number; offsetY: number }
+  | { kind: 'pan'; startX: number; startY: number; vpX: number; vpY: number }
   | {
       kind: 'connect';
       fromNodeId: string;
@@ -103,6 +94,8 @@ export function NodeEditor({
   nodes,
   edges,
   onChange,
+  selectedNodeId,
+  onSelectNode,
   activeNodeIds,
   onRun,
   running,
@@ -110,7 +103,6 @@ export function NodeEditor({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [viewport, setViewport] = useState<Viewport>({ x: 40, y: 40, zoom: 1 });
   const [interaction, setInteraction] = useState<Interaction>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
 
   const activeSet = new Set(activeNodeIds ?? []);
@@ -132,7 +124,7 @@ export function NodeEditor({
     const node = nodes.find((n) => n.id === nodeId);
     if (!node) return;
     const world = screenToWorld(e.clientX, e.clientY);
-    setSelectedNodeId(nodeId);
+    onSelectNode(nodeId);
     setInteraction({
       kind: 'node',
       nodeId,
@@ -161,7 +153,7 @@ export function NodeEditor({
   const onCanvasPointerDown = (e: ReactPointerEvent) => {
     if (e.button !== 0 && e.button !== 1) return;
     if (e.target !== e.currentTarget) return;
-    setSelectedNodeId(null);
+    onSelectNode(null);
     setInteraction({
       kind: 'pan',
       startX: e.clientX,
@@ -265,19 +257,19 @@ export function NodeEditor({
     const onKey = (e: KeyboardEvent) => {
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId) {
         const tag = (e.target as HTMLElement)?.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
         const nextNodes = nodes.filter((n) => n.id !== selectedNodeId);
         const nextEdges = edges.filter(
           (ed) =>
             ed.from.nodeId !== selectedNodeId && ed.to.nodeId !== selectedNodeId
         );
         onChange(nextNodes, nextEdges);
-        setSelectedNodeId(null);
+        onSelectNode(null);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedNodeId, nodes, edges, onChange]);
+  }, [selectedNodeId, nodes, edges, onChange, onSelectNode]);
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -290,6 +282,7 @@ export function NodeEditor({
       world.y - HEADER_HEIGHT / 2
     );
     onChange([...nodes, node], edges);
+    onSelectNode(node.id);
   };
 
   const edgePath = useCallback(
@@ -401,7 +394,7 @@ export function NodeEditor({
       </div>
 
       <div className="node-editor-hint">
-        drag nodes · drag a port to connect · scroll to zoom · click an edge to delete · Delete removes a node
+        drag · port-drag to connect · scroll to zoom · click edge to delete · Delete removes a node
       </div>
 
       <div className="node-editor-zoom">

@@ -1,0 +1,10 @@
+# No dependencies required.
+#
+# The sidecar uses only Python's standard library (http.server + json).
+# It runs on Python 3.8+ including 3.14.
+#
+# Optional — for real ThermoMPNN predictions, install in a Python 3.11
+# or 3.12 environment (not 3.14, which is too new for PyTorch):
+#
+#   torch>=2.2.0
+#   thermompnn @ git+https://github.com/Kuhlman-Lab/ThermoMPNN.git
