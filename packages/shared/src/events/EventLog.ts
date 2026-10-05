@@ -1,5 +1,4 @@
-import type { Action, EventLogId } from '../models';
-import { newActionId } from '../models';
+import type { Action, ActionId, EventLogId } from '../models';
 
 const ZERO_HASH = '0'.repeat(64);
 
@@ -11,8 +10,14 @@ const ZERO_HASH = '0'.repeat(64);
  *   - Hash-chained: each entry includes the hash of the previous
  *   - Replayable: full state can be reconstructed from the log
  *   - Tamper-evident: any modification breaks the chain
+ *   - Reproducible across systems: identical actions produce identical hashes
  *
  * This is what makes an interactive session reproducible — including Play.
+ *
+ * Design note: the action's `id` is DERIVED from its content hash, not
+ * generated randomly. This is required for cross-system reproducibility.
+ * Two independent logs given the same actions produce the same ids and the
+ * same hash chain. If we used random ids, the chains would diverge.
  */
 export class EventLog {
   readonly id: EventLogId;
@@ -40,10 +45,10 @@ export class EventLog {
     partial: Omit<Action, 'id' | 'hash' | 'prevHash'>
   ): Promise<Action> {
     const prevHash = this.last?.hash ?? ZERO_HASH;
-    const id = newActionId();
 
+    // Hash only reproducible content. Do NOT include the id — the id is
+    // derived from the hash, so including it would be circular.
     const content = {
-      id,
       projectId: partial.projectId,
       mode: partial.mode,
       actor: partial.actor,
@@ -54,7 +59,12 @@ export class EventLog {
     };
 
     const hash = await sha256(canonicalize(content));
-    const action: Action = { ...content, hash };
+
+    // Deterministic id, derived from the content hash.
+    // 16 hex chars = 64 bits. Collision-free in practice for a log.
+    const id = `act_${hash.slice(0, 16)}` as ActionId;
+
+    const action: Action = { id, ...content, hash };
     this.actions.push(action);
     return action;
   }
@@ -63,8 +73,8 @@ export class EventLog {
     let prevHash = ZERO_HASH;
     for (const action of this.actions) {
       if (action.prevHash !== prevHash) return false;
+
       const content = {
-        id: action.id,
         projectId: action.projectId,
         mode: action.mode,
         actor: action.actor,
@@ -73,6 +83,7 @@ export class EventLog {
         timestamp: action.timestamp,
         prevHash,
       };
+
       const expected = await sha256(canonicalize(content));
       if (expected !== action.hash) return false;
       prevHash = action.hash;
@@ -100,19 +111,24 @@ export class EventLog {
 }
 
 /**
- * Stable stringification. Keys sorted, so semantically-equal objects hash equally.
+ * Stable stringification. Keys sorted recursively, so semantically-equal
+ * objects hash equally regardless of key insertion order.
  */
 function canonicalize(value: unknown): string {
-  return JSON.stringify(value, (_key, val) => {
-    if (val && typeof val === 'object' && !Array.isArray(val)) {
-      const sorted: Record<string, unknown> = {};
-      for (const k of Object.keys(val).sort()) {
-        sorted[k] = (val as Record<string, unknown>)[k];
-      }
-      return sorted;
+  return JSON.stringify(sortKeys(value));
+}
+
+function sortKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortKeys);
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const sorted: Record<string, unknown> = {};
+    for (const k of Object.keys(obj).sort()) {
+      sorted[k] = sortKeys(obj[k]);
     }
-    return val;
-  });
+    return sorted;
+  }
+  return value;
 }
 
 async function sha256(input: string): Promise<string> {
