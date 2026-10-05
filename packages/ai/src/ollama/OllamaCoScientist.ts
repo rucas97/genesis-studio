@@ -1,52 +1,27 @@
 import type {
-  CoScientist,
-  CoScientistCapabilities,
-  CoScientistInput,
-  Observation,
+  CoScientist, CoScientistCapabilities, CoScientistInput, Observation,
 } from '../types';
 import type { Hypothesis } from '@genesis/shared';
 import { newHypothesisId } from '@genesis/shared';
 
 const DEFAULT_URL = 'http://127.0.0.1:11434';
 
-/**
- * Local LLM co-scientist backed by Ollama.
- *
- * Ollama is a simple local model server. If it is running, this class
- * turns the stub co-scientist into a real one that reasons about the
- * variant and prediction.
- *
- * The model is prompted for strict JSON. If parsing fails, the class
- * falls back to a stub-shaped response so the app never breaks.
- *
- * No API key. No cloud. The model runs on the local machine.
- */
 export class OllamaCoScientist implements CoScientist {
   readonly name: string;
   readonly version = '1.0.0';
-
-  constructor(
-    private baseUrl: string,
-    private model: string
-  ) {
+  constructor(private baseUrl: string, private model: string) {
     this.name = `Ollama:${model}`;
   }
-
   capabilities(): CoScientistCapabilities {
     return {
-      canObserve: true,
-      canHypothesize: true,
-      canProposeExperiment: true,
-      runsLocally: true,
-      approximateLatencyMs: 4000,
-      validationScope:
-        'Local LLM. Output is not validated against curated data. Treat as assistance, not authority.',
+      canObserve: true, canHypothesize: true, canProposeExperiment: true,
+      runsLocally: true, approximateLatencyMs: 4000,
+      validationScope: 'Local LLM. Output is not validated against curated data. Treat as assistance, not authority.',
     };
   }
 
   async observe(input: CoScientistInput): Promise<Observation> {
-    const prompt = buildObservePrompt(input);
-    const raw = await this.generate(prompt);
+    const raw = await this.generate(buildObservePrompt(input));
     const parsed = tryParseJSON(raw) as Partial<Observation> | null;
     if (!parsed) return fallbackObservation(input);
     return {
@@ -59,16 +34,10 @@ export class OllamaCoScientist implements CoScientist {
   }
 
   async hypothesize(input: CoScientistInput): Promise<Hypothesis> {
-    const prompt = buildHypothesizePrompt(input);
-    const raw = await this.generate(prompt);
+    const raw = await this.generate(buildHypothesizePrompt(input));
     const parsed = tryParseJSON(raw) as any;
-
     const obs = await this.observe(input);
-
-    if (!parsed) {
-      return fallbackHypothesis(input, obs);
-    }
-
+    if (!parsed) return fallbackHypothesis(input, obs);
     return {
       id: newHypothesisId(),
       projectId: input.projectId,
@@ -83,25 +52,16 @@ export class OllamaCoScientist implements CoScientist {
           }))
         : [],
       uncertainty: {
-        confidence: obs.confidence,
-        methodAgreement: obs.agreement,
-        trainingDistribution: 'unknown',
-        physicalPlausibility: 'valid',
+        confidence: obs.confidence, methodAgreement: obs.agreement,
+        trainingDistribution: 'unknown', physicalPlausibility: 'valid',
         notes: 'LLM-generated. Not calibrated. Verify with a real method.',
       },
       evidence: {
-        methodsAgreeing: [],
-        methodsDisagreeing: [],
-        literatureStatus: 'not checked',
-        novelty: 'unknown',
+        methodsAgreeing: [], methodsDisagreeing: [],
+        literatureStatus: 'not checked', novelty: 'unknown',
       },
       falsification: String(parsed.falsification ?? 'Not specified.'),
-      nextExperiment: {
-        description: String(parsed.nextExperiment?.description ?? ''),
-        protocol: parsed.nextExperiment?.protocol,
-        primers: parsed.nextExperiment?.primers,
-        reagents: parsed.nextExperiment?.reagents,
-      },
+      nextExperiment: { description: String(parsed.nextExperiment?.description ?? '') },
       derivedFromRunIds: [],
       createdAt: new Date().toISOString(),
     };
@@ -111,168 +71,102 @@ export class OllamaCoScientist implements CoScientist {
     const res = await fetch(`${this.baseUrl}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: this.model,
-        prompt,
-        stream: false,
-        format: 'json',
-        options: { temperature: 0.2, top_p: 0.9 },
-      }),
+      body: JSON.stringify({ model: this.model, prompt, stream: false, format: 'json', options: { temperature: 0.2, top_p: 0.9 } }),
     });
-    if (!res.ok) {
-      throw new Error(`Ollama returned ${res.status}`);
-    }
+    if (!res.ok) throw new Error(`Ollama returned ${res.status}`);
     const json = (await res.json()) as { response?: string };
     return json.response ?? '';
   }
 }
 
-// ---------------------------------------------------------------------------
-// Prompts
-// ---------------------------------------------------------------------------
-
 function buildObservePrompt(input: CoScientistInput): string {
-  const { molecule, variant, predictions } = input;
+  const { molecule, variant, predictions, binding } = input;
   const pred = predictions[0];
-  return [
+  const lines = [
     'You are a computational biology co-scientist. Be terse. Do not exaggerate.',
     '',
-    `Protein: ${molecule.name} (PDB ${molecule.structure?.kind === 'pdb' ? molecule.structure.pdbId : 'n/a'})`,
+    `Protein: ${molecule.name}`,
     `Variant: ${variant.hgvs}`,
-    `Prediction: deltaDeltaG = ${pred?.deltaDeltaG} kcal/mol ` +
-      `(95% CI ${pred?.deltaDeltaGCI?.[0]} to ${pred?.deltaDeltaGCI?.[1]}), ` +
-      `method = ${pred?.method}`,
+    `Prediction: deltaDeltaG = ${pred?.deltaDeltaG} kcal/mol, method = ${pred?.method}`,
+  ];
+  if (binding) {
+    lines.push('', `Ligand: ${binding.ligandName} (${binding.ligandFormula})`,
+      `Distance: ${binding.distanceAngstrom} Angstrom`,
+      `Estimated Kd: ${binding.estimatedKdNm} nM (geometric stub, not a real docking score)`);
+  }
+  lines.push(
     '',
     'Return ONLY valid JSON with this exact shape:',
-    '{',
-    '  "summary": string,   // one sentence, no hype',
-    '  "agreement": number, // 0..1',
-    '  "confidence": number,// 0..1',
-    '  "flags": string[],   // short snake_case tags',
-    '  "notes": string      // optional caveats',
-    '}',
-  ].join('\n');
+    '{ "summary": string, "agreement": number, "confidence": number, "flags": string[], "notes": string }'
+  );
+  return lines.join('\n');
 }
 
 function buildHypothesizePrompt(input: CoScientistInput): string {
-  const { molecule, variant, predictions } = input;
+  const { molecule, variant, predictions, binding } = input;
   const pred = predictions[0];
-  return [
+  const lines = [
     'You are a computational biology co-scientist. Produce a falsifiable',
-    'hypothesis about the effect of a variant. Keep claims specific and',
-    'testable. Do not invent literature references.',
+    'hypothesis. Keep claims specific and testable. Do not invent references.',
     '',
-    `Protein: ${molecule.name} (PDB ${molecule.structure?.kind === 'pdb' ? molecule.structure.pdbId : 'n/a'})`,
+    `Protein: ${molecule.name}`,
     `Variant: ${variant.hgvs}`,
-    `Predicted deltaDeltaG: ${pred?.deltaDeltaG} kcal/mol (${pred?.method})`,
+    `Predicted deltaDeltaG: ${pred?.deltaDeltaG} kcal/mol`,
+  ];
+  if (binding) {
+    lines.push('', `Ligand: ${binding.ligandName} (${binding.ligandFormula})`,
+      `Distance: ${binding.distanceAngstrom} Angstrom`,
+      `Estimated Kd: ${binding.estimatedKdNm} nM (geometric stub)`);
+  }
+  lines.push(
     '',
-    'Return ONLY valid JSON with this exact shape:',
-    '{',
-    '  "claim": string,        // one sentence, falsifiable',
-    '  "mechanism": string,    // 2-3 sentences',
-    '  "predictions": [        // 1-3 items',
-    '    { "type": "biophysical"|"functional"|"cellular", "test": string, "expected": string }',
-    '  ],',
-    '  "falsification": string,',
-    '  "nextExperiment": { "description": string }',
-    '}',
-  ].join('\n');
+    'Return ONLY valid JSON:',
+    '{ "claim": string, "mechanism": string, "predictions": [{"type": string, "test": string, "expected": string}], "falsification": string, "nextExperiment": {"description": string} }'
+  );
+  return lines.join('\n');
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 function tryParseJSON(text: string): unknown | null {
-  try {
-    return JSON.parse(text);
-  } catch {
-    const start = text.indexOf('{');
-    const end = text.lastIndexOf('}');
-    if (start >= 0 && end > start) {
-      try {
-        return JSON.parse(text.slice(start, end + 1));
-      } catch {
-        return null;
-      }
-    }
+  try { return JSON.parse(text); } catch {
+    const s = text.indexOf('{'); const e = text.lastIndexOf('}');
+    if (s >= 0 && e > s) { try { return JSON.parse(text.slice(s, e + 1)); } catch { return null; } }
     return null;
   }
 }
-
-function clamp01(n: number): number {
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(1, n));
-}
+function clamp01(n: number): number { return !Number.isFinite(n) ? 0 : Math.max(0, Math.min(1, n)); }
 
 function fallbackObservation(input: CoScientistInput): Observation {
   const count = input.predictions.length;
   const ddg = count > 0 ? input.predictions[0].deltaDeltaG : 0;
   return {
     summary: `${input.variant.hgvs} on ${input.molecule.name}: ΔΔG ${ddg.toFixed(2)} kcal/mol.`,
-    agreement: count > 0 ? 1 : 0,
-    confidence: 0.5,
-    flags: ['llm_parse_failed'],
-    notes: 'Model output could not be parsed as JSON. Raw stub observation returned.',
+    agreement: count > 0 ? 1 : 0, confidence: 0.5,
+    flags: ['llm_parse_failed'], notes: 'Model output unparseable. Stub returned.',
   };
 }
 
-function fallbackHypothesis(
-  input: CoScientistInput,
-  obs: Observation
-): Hypothesis {
+function fallbackHypothesis(input: CoScientistInput, obs: Observation): Hypothesis {
   return {
-    id: newHypothesisId(),
-    projectId: input.projectId,
-    source: 'play',
+    id: newHypothesisId(), projectId: input.projectId, source: 'play',
     claim: `${input.variant.hgvs} alters stability of ${input.molecule.name}.`,
     mechanism: 'Mechanism not produced (LLM output unparseable).',
     predictions: [],
-    uncertainty: {
-      confidence: obs.confidence,
-      methodAgreement: obs.agreement,
-      trainingDistribution: 'unknown',
-      physicalPlausibility: 'valid',
-      notes: 'Fallback due to LLM parse failure.',
-    },
-    evidence: {
-      methodsAgreeing: [],
-      methodsDisagreeing: [],
-      literatureStatus: 'not checked',
-      novelty: 'unknown',
-    },
+    uncertainty: { confidence: obs.confidence, methodAgreement: obs.agreement,
+      trainingDistribution: 'unknown', physicalPlausibility: 'valid',
+      notes: 'Fallback due to LLM parse failure.' },
+    evidence: { methodsAgreeing: [], methodsDisagreeing: [],
+      literatureStatus: 'not checked', novelty: 'unknown' },
     falsification: 'Not specified (fallback).',
     nextExperiment: { description: 'Not specified (fallback).' },
-    derivedFromRunIds: [],
-    createdAt: new Date().toISOString(),
+    derivedFromRunIds: [], createdAt: new Date().toISOString(),
   };
 }
 
-// ---------------------------------------------------------------------------
-// Probing
-// ---------------------------------------------------------------------------
-
-export interface OllamaHealth {
-  ok: boolean;
-  baseUrl: string;
-  models: string[];
-  chosenModel: string;
-}
-
-const PREFERRED_MODELS = [
-  'llama3.1',
-  'llama3.2',
-  'llama3',
-  'qwen2.5',
-  'qwen2.5-coder',
-  'mistral',
-  'phi3',
-  'gemma2',
-];
+export interface OllamaHealth { ok: boolean; baseUrl: string; models: string[]; chosenModel: string; }
+const PREFERRED_MODELS = ['llama3.1', 'llama3.2', 'llama3', 'qwen2.5', 'mistral', 'phi3', 'gemma2'];
 
 export async function probeOllama(
-  baseUrl: string = DEFAULT_URL,
-  timeoutMs = 1000
+  baseUrl: string = DEFAULT_URL, timeoutMs = 1000
 ): Promise<OllamaHealth | null> {
   try {
     const controller = new AbortController();
@@ -283,11 +177,7 @@ export async function probeOllama(
     const json = (await res.json()) as { models?: Array<{ name: string }> };
     const models = (json.models ?? []).map((m) => m.name);
     if (models.length === 0) return null;
-    const chosen =
-      PREFERRED_MODELS.find((p) => models.some((m) => m.startsWith(p))) ??
-      models[0];
+    const chosen = PREFERRED_MODELS.find((p) => models.some((m) => m.startsWith(p))) ?? models[0];
     return { ok: true, baseUrl, models, chosenModel: chosen };
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }

@@ -1546,3 +1546,181 @@ button.send-to-play:hover {
   min-width: 56px;
 }
 .emergence-event-text { color: #a8b4bc; }
+
+/* ============================================================
+   Enhanced 3D view — glassy background
+   ============================================================ */
+
+.protein-viewer {
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(30, 60, 100, 0.55), transparent 60%),
+    radial-gradient(ellipse at 50% 90%, rgba(60, 20, 90, 0.4), transparent 70%),
+    linear-gradient(180deg, #05070c 0%, #03040a 100%);
+}
+
+.protein-viewer canvas {
+  background: transparent !important;
+}
+
+/* ============================================================
+   Replay controls
+   ============================================================ */
+
+.replay-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0 10px 0;
+  border-bottom: 1px solid #1a1f24;
+  margin-bottom: 10px;
+}
+.replay-slider {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #1a1f24;
+  border-radius: 2px;
+  outline: none;
+}
+.replay-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #66ccff;
+  cursor: pointer;
+  border: 2px solid #0a0a0a;
+}
+.replay-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #66ccff;
+  cursor: pointer;
+  border: 2px solid #0a0a0a;
+}
+.replay-position {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  color: #8899aa;
+  min-width: 48px;
+  text-align: right;
+}
+
+.replay-caption {
+  padding: 12px;
+  background: linear-gradient(180deg, #0d1620, #0a1018);
+  border: 1px solid #1e3a4a;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+.replay-caption-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+.replay-caption-mode {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+}
+.replay-caption-counter {
+  font-size: 10px;
+  color: #556;
+  font-family: ui-monospace, Menlo, monospace;
+}
+.replay-caption-text {
+  font-size: 13px;
+  color: #c8d4dc;
+  line-height: 1.5;
+}
+.replay-caption-time {
+  font-size: 10px;
+  color: #556;
+  font-family: ui-monospace, Menlo, monospace;
+  margin-top: 6px;
+}
+
+.log-row.active {
+  background: rgba(102, 204, 255, 0.08);
+  border-left: 2px solid #66ccff;
+  padding-left: 6px;
+}
+
+/* ============================================================
+   AI card — predictions list
+   ============================================================ */
+
+.ai-predictions {
+  margin: 4px 0 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ai-predictions li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  background: #0a121a;
+  border: 1px solid #1a2a36;
+  border-radius: 4px;
+}
+.ai-pred-type {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1.1px;
+  color: #66ccff;
+}
+.ai-pred-test {
+  font-size: 12px;
+  color: #c8d4dc;
+  font-weight: 500;
+}
+.ai-pred-exp {
+  font-size: 11px;
+  color: #8899aa;
+}
+
+/* Placed ligands list */
+.placed-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.placed-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px;
+  background: #0e1216; border: 1px solid #1a1f24; border-radius: 4px;
+  font-size: 12px;
+}
+.placed-name { flex: 1; color: #c8d4dc; }
+.placed-pos { font-size: 10px; color: #556; }
+.placed-remove {
+  background: transparent; border: none; color: #8899aa;
+  font-size: 16px; cursor: pointer; padding: 0 4px; font-family: inherit;
+}
+.placed-remove:hover { color: #ff8888; }
+
+/* Mini snapshot view in replay */
+.replay-snapshot {
+  height: 220px;
+  border: 1px solid #1a2a36;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #0a1018, #070a0f);
+  overflow: hidden;
+  margin-bottom: 12px;
+  position: relative;
+}
+.mini-view-canvas { width: 100%; height: 100%; }
+.mini-view-label {
+  position: absolute; bottom: 8px; left: 10px;
+  font-size: 10px; color: #8899aa;
+  font-family: ui-monospace, Menlo, monospace;
+  background: rgba(10,10,10,0.75); padding: 3px 8px; border-radius: 3px;
+}
+.mini-view-loading, .mini-view-error {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; color: #556; font-size: 12px;
+}

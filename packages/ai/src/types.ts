@@ -1,6 +1,13 @@
 import type { Molecule, Variant, Hypothesis, ProjectId } from '@genesis/shared';
 import type { StabilityPrediction } from '@genesis/engines';
 
+export interface BindingContext {
+  ligandName: string;
+  ligandFormula: string;
+  distanceAngstrom: number;
+  estimatedKdNm: number;
+}
+
 export interface CoScientistCapabilities {
   canObserve: boolean;
   canHypothesize: boolean;
@@ -15,6 +22,7 @@ export interface CoScientistInput {
   molecule: Molecule;
   variant: Variant;
   predictions: StabilityPrediction[];
+  binding?: BindingContext;
 }
 
 export interface Observation {

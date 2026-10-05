@@ -8,7 +8,6 @@ export function AICard({
   hypothesis: Hypothesis | null;
 }) {
   if (!observation) return null;
-
   return (
     <div className="ai-card">
       <div className="ai-label">AI co-scientist</div>
@@ -39,14 +38,40 @@ export function AICard({
             <div className="ai-section-label">Claim</div>
             <p>{hypothesis.claim}</p>
           </div>
+          {hypothesis.mechanism && (
+            <div className="ai-section">
+              <div className="ai-section-label">Mechanism</div>
+              <p>{hypothesis.mechanism}</p>
+            </div>
+          )}
+          {hypothesis.predictions.length > 0 && (
+            <div className="ai-section">
+              <div className="ai-section-label">Predictions</div>
+              <ul className="ai-predictions">
+                {hypothesis.predictions.map((p, i) => (
+                  <li key={i}>
+                    <span className="ai-pred-type">{p.type}</span>
+                    <span className="ai-pred-test">{p.test}</span>
+                    <span className="ai-pred-exp">{p.expected}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="ai-section">
             <div className="ai-section-label">Falsification</div>
             <p>{hypothesis.falsification}</p>
           </div>
+          {hypothesis.nextExperiment.description && (
+            <div className="ai-section">
+              <div className="ai-section-label">Next experiment</div>
+              <p>{hypothesis.nextExperiment.description}</p>
+            </div>
+          )}
         </>
       )}
 
-      <div className="stub-note">Stub co-scientist. Not for scientific use.</div>
+      <div className="stub-note">Stub co-scientist if no Ollama. Not for scientific use.</div>
     </div>
   );
 }

@@ -1,36 +1,27 @@
 """
-GENESIS Studio — engine sidecar.
+GENESIS Studio engine sidecar.
 
-Zero dependencies. Uses only Python's standard library so it runs on any
-Python 3.8+ including 3.14, no venv required, no pip install required.
+Zero dependencies. Uses only the standard library.
 
 Run:
     python server.py
 
-Then start the desktop app. The Flow sidebar will show which runner is
-active. Real numbers only appear when ThermoMPNN is installed — see
-ThermoMPNNRunner below.
-
 Endpoints:
     GET  /health             -> { status, runner, version }
     POST /predict_stability  -> { deltaDeltaG, deltaDeltaGCI, method, ... }
+    POST /dock               -> { distanceAngstrom, estimatedKdNm, method, ... }
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import math
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 
-# ---------------------------------------------------------------------------
-# Runners
-# ---------------------------------------------------------------------------
-
-class StubRunner:
-    """Deterministic placeholder. Not science. Used when ThermoMPNN is absent."""
-
+class StubStabilityRunner:
     name = "StubRunner"
     version = "0.0.1"
 
@@ -45,66 +36,84 @@ class StubRunner:
             "deltaDeltaGCI": [round(ddg - band, 2), round(ddg + band, 2)],
             "method": "Stub (sidecar)",
             "methodVersion": self.version,
-            "notes": "Stub runner. Install ThermoMPNN for real predictions.",
+            "notes": "Stub runner. Not for scientific use.",
+        }
+
+
+class StubDockingRunner:
+    name = "StubDocking"
+    version = "0.0.1"
+
+    def dock(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        dx = body["ligandX"] - body["proteinX"]
+        dy = body["ligandY"] - body["proteinY"]
+        dz = body["ligandZ"] - body["proteinZ"]
+        distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+        optimal = 3.5
+        sigma = 1.5
+        score = math.exp(-((distance - optimal) ** 2) / (2 * sigma * sigma))
+        kd_nm = 10.0 * math.pow(10000.0, 1.0 - score)
+        return {
+            "distanceAngstrom": round(distance, 2),
+            "estimatedKdNm": round(kd_nm, 2),
+            "method": "Sidecar geometric stub",
+            "methodVersion": self.version,
+            "notes": "Geometric estimate from atom distance. Not a real docking score.",
         }
 
 
 class ThermoMPNNRunner:
-    """
-    Real ThermoMPNN runner.
-
-    Requires:
-        pip install torch thermompnn
-
-    IMPORTANT: use a Python 3.11 or 3.12 environment, NOT 3.14. PyTorch
-    and PyO3 do not yet support 3.14.
-
-    Weights: download thermoMPNN_weights.pt and place next to this file.
-
-    The exact call signature of ThermoMPNN has changed across releases.
-    Fill in the two hook points below to match your installed version.
-    """
-
     name = "ThermoMPNNRunner"
     version = "1.0.0"
 
     def __init__(self) -> None:
         import torch  # noqa: F401
         import thermompnn  # noqa: F401
-
-        # Load the model once. Adjust paths to your install.
-        # Example (adapt to your ThermoMPNN version):
-        #   from thermompnn.inference import load_model
-        #   self.model, self.config = load_model("thermoMPNN_weights.pt")
         self.model = None
         self.config = None
 
     def predict(self, pdb_id: str, variant: Dict[str, Any]) -> Dict[str, Any]:
-        if self.model is None:
-            raise RuntimeError(
-                "ThermoMPNN model not loaded. See ThermoMPNNRunner.__init__."
-            )
-        # Placeholder for the real call. Adapt to your ThermoMPNN version:
-        #   result = self.model.predict(pdb_id, variant["hgvs"])
-        #   ddg = float(result.ddg)
         raise NotImplementedError(
             "Plug the real ThermoMPNN call into ThermoMPNNRunner.predict."
         )
 
 
-def pick_runner():
+class VinaDockingRunner:
+    """Real AutoDock Vina docking. Requires vina installed and on PATH."""
+
+    name = "VinaDocking"
+    version = "1.0.0"
+
+    def __init__(self) -> None:
+        import subprocess
+        try:
+            subprocess.run(["vina", "--version"], capture_output=True, check=False, timeout=5)
+        except FileNotFoundError:
+            raise ImportError("vina not on PATH")
+
+    def dock(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        raise NotImplementedError(
+            "Plug the real Vina invocation into VinaDockingRunner.dock."
+        )
+
+
+def pick_stability_runner():
     try:
         return ThermoMPNNRunner()
     except Exception:
-        return StubRunner()
+        return StubStabilityRunner()
 
 
-RUNNER = pick_runner()
+def pick_docking_runner():
+    try:
+        return VinaDockingRunner()
+    except Exception:
+        return StubDockingRunner()
 
 
-# ---------------------------------------------------------------------------
-# HTTP handler
-# ---------------------------------------------------------------------------
+STABILITY_RUNNER = pick_stability_runner()
+DOCKING_RUNNER = pick_docking_runner()
+
 
 class Handler(BaseHTTPRequestHandler):
     def _send_json(self, status: int, payload: Any) -> None:
@@ -112,7 +121,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
-        # CORS: allow the Vite dev server.
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
@@ -128,46 +136,45 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if self.path == "/health":
-            self._send_json(
-                200,
-                {"status": "ok", "runner": RUNNER.name, "version": RUNNER.version},
-            )
+            self._send_json(200, {
+                "status": "ok",
+                "runner": STABILITY_RUNNER.name,
+                "version": STABILITY_RUNNER.version,
+                "dockingRunner": DOCKING_RUNNER.name,
+                "dockingVersion": DOCKING_RUNNER.version,
+            })
             return
         self._send_json(404, {"error": "not found"})
 
     def do_POST(self) -> None:
-        if self.path != "/predict_stability":
+        if self.path not in ("/predict_stability", "/dock"):
             self._send_json(404, {"error": "not found"})
             return
-
         try:
             length = int(self.headers.get("Content-Length", "0"))
             raw = self.rfile.read(length).decode("utf-8")
             body = json.loads(raw)
-            pdb_id = body["pdbId"]
-            variant = body["variant"]
-            result = RUNNER.predict(pdb_id, variant)
+
+            if self.path == "/predict_stability":
+                result = STABILITY_RUNNER.predict(body["pdbId"], body["variant"])
+            else:
+                result = DOCKING_RUNNER.dock(body)
+
             self._send_json(200, result)
         except Exception as e:
             self._send_json(500, {"error": str(e)})
 
     def log_message(self, fmt: str, *args: Any) -> None:
-        # Quieter logging.
         print(f"[sidecar] {fmt % args}")
 
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 
 def main() -> None:
     host = "127.0.0.1"
     port = 8765
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"GENESIS engine sidecar listening on http://{host}:{port}")
-    print(f"Runner: {RUNNER.name} v{RUNNER.version}")
-    if isinstance(RUNNER, StubRunner):
-        print("  Note: stub runner. Install ThermoMPNN for real predictions.")
+    print(f"Stability runner: {STABILITY_RUNNER.name} v{STABILITY_RUNNER.version}")
+    print(f"Docking runner: {DOCKING_RUNNER.name} v{DOCKING_RUNNER.version}")
     print("Press Ctrl+C to stop.")
     try:
         server.serve_forever()

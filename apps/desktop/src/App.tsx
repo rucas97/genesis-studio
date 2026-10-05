@@ -15,12 +15,7 @@ export function App() {
 
 function Shell() {
   const {
-    activeTab,
-    setActiveTab,
-    actionCount,
-    logVerified,
-    verifyLog,
-    log,
+    activeTab, setActiveTab, actionCount, logVerified, verifyLog, log,
   } = useProject();
   const [logOpen, setLogOpen] = useState(false);
 
@@ -29,21 +24,12 @@ function Shell() {
       <header className="topbar">
         <div className="brand">GENESIS Studio</div>
         <nav className="tabs">
-          <TabButton active={activeTab === 'play'} onClick={() => setActiveTab('play')}>
-            Play
-          </TabButton>
-          <TabButton active={activeTab === 'flow'} onClick={() => setActiveTab('flow')}>
-            Flow
-          </TabButton>
-          <TabButton active={activeTab === 'emergence'} disabled onClick={() => setActiveTab('emergence')}>
-            Emergence
-          </TabButton>
+          <TabButton active={activeTab === 'play'} onClick={() => setActiveTab('play')}>Play</TabButton>
+          <TabButton active={activeTab === 'flow'} onClick={() => setActiveTab('flow')}>Flow</TabButton>
+          <TabButton active={activeTab === 'emergence'} disabled onClick={() => setActiveTab('emergence')}>Emergence</TabButton>
         </nav>
         <div className="topbar-right">
-          <button
-            className="log-toggle"
-            onClick={() => setLogOpen((v) => !v)}
-          >
+          <button className="log-toggle" onClick={() => setLogOpen((v) => !v)}>
             {logOpen ? 'Hide log' : 'Show log'}
           </button>
           <span className="action-count">
@@ -54,13 +40,7 @@ function Shell() {
               {logVerified ? '✓ chain intact' : '✗ chain broken'}
             </span>
           )}
-          <button
-            className="link"
-            disabled={actionCount === 0}
-            onClick={verifyLog}
-          >
-            Verify
-          </button>
+          <button className="link" disabled={actionCount === 0} onClick={verifyLog}>Verify</button>
           <span className="badge">Research-use-only</span>
         </div>
       </header>
@@ -71,7 +51,12 @@ function Shell() {
       </main>
       {logOpen && (
         <div className="log-drawer">
-          <SessionLogPanel log={log} actionCount={actionCount} />
+          <SessionLogPanel
+            log={log}
+            actionCount={actionCount}
+            defaultPdbId="4HJO"
+            defaultProteinId="egfr"
+          />
         </div>
       )}
     </div>
@@ -79,22 +64,12 @@ function Shell() {
 }
 
 function TabButton({
-  active,
-  disabled,
-  onClick,
-  children,
+  active, disabled, onClick, children,
 }: {
-  active?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-  children: ReactNode;
+  active?: boolean; disabled?: boolean; onClick: () => void; children: ReactNode;
 }) {
   return (
-    <button
-      className={`tab ${active ? 'active' : ''}`}
-      disabled={disabled}
-      onClick={onClick}
-    >
+    <button className={`tab ${active ? 'active' : ''}`} disabled={disabled} onClick={onClick}>
       {children}
     </button>
   );
