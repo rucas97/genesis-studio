@@ -36,6 +36,7 @@ export interface ProteinViewerProps {
   bindAnchors?: number[];
   placedLigands?: PlacedLigandRender[];
   onLigandPositionChange?: (instanceId: string, p: [number, number, number]) => void;
+  onLigandDragStart?: (instanceId: string) => void;
   onLigandDragEnd?: (instanceId: string, p: [number, number, number]) => void;
   highlightedLigandAtom?: number | null;
   highlightedLigandInstance?: string | null;
@@ -57,6 +58,7 @@ export function ProteinViewer({
   bindAnchors = [],
   placedLigands = [],
   onLigandPositionChange,
+  onLigandDragStart,
   onLigandDragEnd,
   highlightedLigandAtom = null,
   highlightedLigandInstance = null,
@@ -103,11 +105,7 @@ export function ProteinViewer({
   return (
     <div className="protein-viewer">
       <Canvas
-        camera={{ position: [0, 0, 90], fov: 42, near: 0.5, far: 8000 }}
-        onPointerMissed={() => {
-          if (draggingRef.current) return;
-          if (tool === 'select') onPickResidue(null);
-        }}
+        camera={{ position: [0, 0, 90], fov: 42, near: 0.5, far: 20000 }}
         gl={{
           antialias: true,
           toneMapping: THREE.ACESFilmicToneMapping,
@@ -127,6 +125,9 @@ export function ProteinViewer({
 
         <CameraControls
           draggingRef={draggingRef}
+          onBackgroundClick={() => {
+            if (tool === 'select') onPickResidue(null);
+          }}
           autoRotate={placedLigands.length === 0}
           autoRotateSpeed={0.12}
           idleDelay={3}
@@ -152,7 +153,10 @@ export function ProteinViewer({
             ligand={pl.ligand}
             position={pl.position}
             onPositionChange={onLigandPositionChange ?? (() => {})}
-            onDragStart={() => { draggingRef.current = true; }}
+            onDragStart={(id) => {
+              draggingRef.current = true;
+              onLigandDragStart?.(id);
+            }}
             onDragEnd={(id, p) => {
               draggingRef.current = false;
               onLigandDragEnd?.(id, p);
