@@ -1375,3 +1375,16 @@ button.send-to-play:hover {
   margin-top: 4px;
   line-height: 1.4;
 }
+
+/* Ensure the tool belt is always on top and clickable */
+.tool-belt {
+  z-index: 100 !important;
+  pointer-events: auto !important;
+}
+.protein-viewer canvas {
+  pointer-events: auto;
+}
+/* Make the viewer hint not overlap the tool belt on narrow screens */
+.viewer-hint {
+  max-width: 200px;
+}

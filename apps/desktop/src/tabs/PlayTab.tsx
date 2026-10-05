@@ -10,9 +10,7 @@ import { useProject } from '../state/ProjectContext';
 import { getProteinById, type ProteinEntry } from '../data/proteinLibrary';
 import type { PDBSource } from '../scene/pdbLoader';
 import {
-  listCoScientists,
-  getCoScientist,
-  tryRegisterOllama,
+  listCoScientists, getCoScientist, tryRegisterOllama,
 } from '@genesis/ai';
 import { cutAt, initialSegment, mergeSegments, type Segment } from '../scene/segments';
 
@@ -25,10 +23,8 @@ type AIState =
 
 export function PlayTab() {
   const {
-    log,
-    projectId,
-    pendingSendToPlay,
-    clearPendingSendToPlay,
+    log, projectId,
+    pendingSendToPlay, clearPendingSendToPlay,
     refreshActionCount,
   } = useProject();
 
@@ -39,8 +35,7 @@ export function PlayTab() {
   );
 
   const session = usePlaySession({
-    log,
-    projectId,
+    log, projectId,
     pdbId: protein.pdbId,
     proteinName: protein.name,
     geneName: protein.gene,
@@ -53,13 +48,13 @@ export function PlayTab() {
   // Playground state
   const [tool, setTool] = useState<PlaygroundTool>('select');
   const [segments, setSegments] = useState<Segment[] | null>(null);
+  const [atomCount, setAtomCount] = useState(0);
   const [measureAnchors, setMeasureAnchors] = useState<number[]>([]);
   const [bindAnchors, setBindAnchors] = useState<number[]>([]);
   const [measureDistance, setMeasureDistance] = useState<number | null>(null);
+  const [cutCount, setCutCount] = useState(0);
 
-  const atomCoordsRef = useRef<Map<number, { x: number; y: number; z: number }>>(
-    new Map()
-  );
+  const atomCoordsRef = useRef<Map<number, { x: number; y: number; z: number }>>(new Map());
 
   useEffect(() => {
     let cancelled = false;
@@ -91,6 +86,8 @@ export function PlayTab() {
     setMeasureAnchors([]);
     setBindAnchors([]);
     setMeasureDistance(null);
+    setCutCount(0);
+    atomCoordsRef.current.clear();
     consumedRef.current = false;
   };
 
@@ -100,7 +97,7 @@ export function PlayTab() {
       return;
     }
     if (!picked) return;
-    // Record coordinates for distance measurement.
+
     atomCoordsRef.current.set(picked.index, picked.atom);
 
     if (tool === 'measure') {
@@ -120,16 +117,21 @@ export function PlayTab() {
       });
       return;
     }
+
     if (tool === 'bind') {
-      setBindAnchors((prev) => (prev.length >= 2 ? [picked.index] : [...prev, picked.index]));
+      setBindAnchors((prev) => {
+        const next = prev.length >= 2 ? [picked.index] : [...prev, picked.index];
+        return next;
+      });
       return;
     }
+
     if (tool === 'attach') {
       setBindAnchors((prev) => {
         const next = prev.length >= 2 ? [picked.index] : [...prev, picked.index];
         if (next.length === 2 && segments) {
-          setSegments(mergeSegments(segments, next[0], next[1]));
-          setBindAnchors([]);
+          const merged = mergeSegments(segments, next[0], next[1]);
+          setSegments(merged);
           return [];
         }
         return next;
@@ -140,10 +142,10 @@ export function PlayTab() {
 
   const handleCut = (atomIndex: number) => {
     setSegments((prev) => {
-      const base = prev ?? null;
-      const current = base ?? initialSegment(1000);
-      if (!base) return null;
-      return cutAt(current, atomIndex);
+      const current = prev ?? initialSegment(atomCount);
+      const next = cutAt(current, atomIndex);
+      setCutCount((c) => c + 1);
+      return next;
     });
   };
 
@@ -166,6 +168,7 @@ export function PlayTab() {
           mutatedResidueNumber={session.variant?.position ?? null}
           onPickResidue={handlePickResidue}
           onSourceKnown={setSource}
+          onAtomsLoaded={setAtomCount}
           tool={tool}
           segments={segments ?? undefined}
           onCut={handleCut}
@@ -175,17 +178,17 @@ export function PlayTab() {
         <div className="scene-overlay">
           <strong>Play</strong> · {protein.pdbId} · {protein.gene} ·{' '}
           {source === 'local' ? 'local cache' : source === 'rcsb' ? 'RCSB (online)' : '…'}
+          {segments && segments.length > 1 && (
+            <> · <span style={{ color: '#ffaa44' }}>{segments.length} fragments · {cutCount} cuts</span></>
+          )}
         </div>
         <ToolBelt
           tool={tool}
           onToolChange={handleToolChange}
           measureDistance={measureDistance}
-          onClearMeasure={() => {
-            setMeasureAnchors([]);
-            setMeasureDistance(null);
-          }}
+          onClearMeasure={() => { setMeasureAnchors([]); setMeasureDistance(null); }}
           segmentCount={segments?.length}
-          onResetSegments={() => setSegments(null)}
+          onResetSegments={() => { setSegments(null); setCutCount(0); }}
         />
       </div>
 
@@ -196,8 +199,20 @@ export function PlayTab() {
           <div className="panel-label">Loaded</div>
           <div className="panel-value">{protein.gene}</div>
           <div className="panel-hint">{protein.name}</div>
-          <div className="panel-hint mono">{protein.pdbId}</div>
+          <div className="panel-hint mono">{protein.pdbId} · {atomCount} residues</div>
           <div className="panel-hint"><em>{protein.why}</em></div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-label">Active tool</div>
+          <div className="panel-value mono">{tool}</div>
+          <div className="panel-hint">
+            {tool === 'select' && 'Click a residue to pick it, then mutate.'}
+            {tool === 'cut' && 'Click a residue to split the chain there.'}
+            {tool === 'attach' && 'Click two residues in different fragments to merge.'}
+            {tool === 'measure' && 'Click two residues to see the distance.'}
+            {tool === 'bind' && 'Click two residues to mark a binding site.'}
+          </div>
         </div>
 
         <div className="panel">
@@ -206,36 +221,21 @@ export function PlayTab() {
           {ai.kind === 'checking' && <div className="panel-hint">checking for Ollama…</div>}
           {ai.kind === 'stub' && (
             <div className="panel-hint">
-              Ollama not detected. Using the stub. Install Ollama from
-              ollama.com, run <code>ollama pull llama3.1</code>, then reload.
+              Ollama not detected. Using stub. Install Ollama, run
+              <code> ollama pull llama3.1</code>, reload.
             </div>
           )}
           {ai.kind === 'ollama' && (
-            <div className="panel-hint">
-              Local LLM. Model: <strong>{ai.model}</strong>. Runs on this
-              machine. Output is not calibrated — verify.
-            </div>
+            <div className="panel-hint">Local LLM: <strong>{ai.model}</strong>.</div>
           )}
           <div className="panel-hint mono">registered: {registered.join(', ')}</div>
         </div>
-
-        {!session.picked && !pendingSendToPlay && tool === 'select' && (
-          <div className="panel">
-            <div className="panel-label">Play</div>
-            <p className="panel-hint">
-              Click a residue to mutate it. Use the tool belt below the
-              viewer to cut, attach, measure, or bind.
-            </p>
-          </div>
-        )}
 
         {session.picked && tool === 'select' && (
           <ResiduePanel
             residue={session.picked}
             disabled={session.status === 'predicting'}
-            onMutate={(aa) => {
-              void session.mutate(aa).then(refreshActionCount);
-            }}
+            onMutate={(aa) => { void session.mutate(aa).then(refreshActionCount); }}
           />
         )}
 
