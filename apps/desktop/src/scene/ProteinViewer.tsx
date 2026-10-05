@@ -9,6 +9,8 @@ import { CameraControls } from './CameraControls';
 import { getResidueColor } from './proteinColors';
 import { assignSecondaryStructure, ssSize } from './secondaryStructure';
 import type { Segment } from './segments';
+import { LigandMesh } from '../playground/LigandMesh';
+import type { LigandEntry } from '../data/ligandLibrary';
 import type { PickedResidue } from '../state/usePlaySession';
 
 export type PlaygroundTool = 'select' | 'cut' | 'attach' | 'measure' | 'bind';
@@ -25,6 +27,11 @@ export interface ProteinViewerProps {
   onCut?: (atomIndex: number) => void;
   measureAnchors?: number[];
   bindAnchors?: number[];
+  activeLigand?: LigandEntry | null;
+  ligandPosition?: [number, number, number];
+  highlightedLigandAtom?: number | null;
+  onLigandAtomClick?: (atomIndex: number) => void;
+  bindingLink?: { proteinAtomIndex: number; ligandAtomIndex: number } | null;
 }
 
 const MEASURE_COLOR = 0xffaa00;
@@ -42,6 +49,11 @@ export function ProteinViewer({
   onCut,
   measureAnchors = [],
   bindAnchors = [],
+  activeLigand,
+  ligandPosition = [40, 0, 0],
+  highlightedLigandAtom = null,
+  onLigandAtomClick,
+  bindingLink,
 }: ProteinViewerProps) {
   const [atoms, setAtoms] = useState<CAAtom[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +100,7 @@ export function ProteinViewer({
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
       >
         <color attach="background" args={['#060809']} />
-        <fog attach="fog" args={['#060809', 200, 450]} />
+        <fog attach="fog" args={['#060809', 200, 500]} />
 
         <hemisphereLight args={[0x88aaff, 0x221100, 0.7]} />
         <directionalLight position={[30, 40, 30]} intensity={1.3} />
@@ -97,7 +109,7 @@ export function ProteinViewer({
 
         <CameraControls
           draggingRef={draggingRef}
-          autoRotate
+          autoRotate={!activeLigand}
           autoRotateSpeed={0.15}
           idleDelay={2.5}
         />
@@ -113,8 +125,27 @@ export function ProteinViewer({
           onPickResidue={onPickResidue}
         />
 
+        {activeLigand && (
+          <LigandMesh
+            ligand={activeLigand}
+            position={ligandPosition}
+            onAtomClick={onLigandAtomClick}
+            highlightedAtom={highlightedLigandAtom}
+          />
+        )}
+
         <AnchorLine atoms={atoms} indices={measureAnchors} color={MEASURE_COLOR} />
         <AnchorLine atoms={atoms} indices={bindAnchors} color={BIND_COLOR} />
+
+        {bindingLink && (
+          <BindingLine
+            atoms={atoms}
+            ligand={activeLigand}
+            proteinAtomIndex={bindingLink.proteinAtomIndex}
+            ligandAtomIndex={bindingLink.ligandAtomIndex}
+            ligandPosition={ligandPosition}
+          />
+        )}
       </Canvas>
     </div>
   );
@@ -193,10 +224,7 @@ function ProteinMesh({
             onClick={(e) => {
               if (draggingRef.current) return;
               e.stopPropagation();
-              if (tool === 'cut' && onCut) {
-                onCut(i);
-                return;
-              }
+              if (tool === 'cut' && onCut) { onCut(i); return; }
               onPickResidue({
                 index: i,
                 residueNumber: a.residueNumber,
@@ -230,6 +258,31 @@ function AnchorLine({ atoms, indices, color }: { atoms: CAAtom[]; indices: numbe
     g.setAttribute('position', new THREE.Float32BufferAttribute([a.x, a.y, a.z, b.x, b.y, b.z], 3));
     return new THREE.Line(g, new THREE.LineBasicMaterial({ color, linewidth: 2 }));
   }, [atoms, indices, color]);
+  if (!line) return null;
+  return <primitive object={line} />;
+}
+
+function BindingLine({
+  atoms, ligand, proteinAtomIndex, ligandAtomIndex, ligandPosition,
+}: {
+  atoms: CAAtom[];
+  ligand: LigandEntry | null | undefined;
+  proteinAtomIndex: number;
+  ligandAtomIndex: number;
+  ligandPosition: [number, number, number];
+}) {
+  const line = useMemo(() => {
+    if (!ligand) return null;
+    const p = atoms[proteinAtomIndex];
+    const l = ligand.atoms[ligandAtomIndex];
+    if (!p || !l) return null;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([
+      p.x, p.y, p.z,
+      l.x + ligandPosition[0], l.y + ligandPosition[1], l.z + ligandPosition[2],
+    ], 3));
+    return new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0x66ff88, linewidth: 3 }));
+  }, [atoms, ligand, proteinAtomIndex, ligandAtomIndex, ligandPosition]);
   if (!line) return null;
   return <primitive object={line} />;
 }

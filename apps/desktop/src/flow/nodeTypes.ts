@@ -45,7 +45,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     key: 'fetch_sequence',
     label: 'Fetch sequence',
     category: 'input',
-    description: 'Retrieve a sequence by UniProt ID',
+    description: 'Fetch a sequence from UniProt (requires network)',
     inputs: [],
     outputs: [{ id: 'seq', label: 'sequence', kind: 'sequence' }],
     params: [

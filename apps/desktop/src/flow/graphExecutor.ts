@@ -3,6 +3,8 @@ import { newVariantId } from '@genesis/shared';
 import {
   getStabilityEngine,
   type StabilityPrediction,
+  fetchUniProtSequence,
+  type UniProtSequence,
 } from '@genesis/engines';
 import { getCoScientist } from '@genesis/ai';
 import { NODE_TYPES } from './nodeTypes';
@@ -32,10 +34,7 @@ export interface ExecutionResult {
   totalMs: number;
 }
 
-export function topoSort(
-  nodes: NodeInstance[],
-  edges: EdgeInstance[]
-): NodeInstance[] {
+export function topoSort(nodes: NodeInstance[], edges: EdgeInstance[]): NodeInstance[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const indeg = new Map<string, number>();
   for (const n of nodes) indeg.set(n.id, 0);
@@ -121,9 +120,10 @@ async function executeNode(
     }
 
     case 'fetch_sequence': {
-      const uniprotId = (node.params.uniprotId as string) || '';
-      // Stub: return an ID token, not an actual fetch.
-      out.set('seq', { uniprotId });
+      const uniprotId = String(node.params.uniprotId ?? '').trim();
+      if (!uniprotId) { out.set('seq', null); return { outputs: out }; }
+      const seq: UniProtSequence | null = await fetchUniProtSequence(uniprotId);
+      out.set('seq', seq);
       return { outputs: out };
     }
 
@@ -136,12 +136,8 @@ async function executeNode(
 
     case 'vcf_import': {
       const content = String(node.params.content ?? '');
-      if (!content) {
-        out.set('vars', []);
-        return { outputs: out };
-      }
-      const parsed = parseVCF(content);
-      out.set('vars', parsed);
+      if (!content) { out.set('vars', []); return { outputs: out }; }
+      out.set('vars', parseVCF(content));
       return { outputs: out };
     }
 
@@ -150,13 +146,9 @@ async function executeNode(
       const list: ParsedVariant[] = incoming && incoming.length > 0
         ? incoming
         : EGFR_VARIANTS.map((v) => ({
-            hgvs: v.hgvs,
-            position: v.position,
-            ref: v.ref,
-            alt: v.alt,
+            hgvs: v.hgvs, position: v.position, ref: v.ref, alt: v.alt,
             kind: v.kind === 'substitution' ? 'substitution' as const
-              : v.kind === 'deletion' ? 'deletion' as const
-              : 'insertion' as const,
+              : v.kind === 'deletion' ? 'deletion' as const : 'insertion' as const,
             note: v.note,
           }));
 
@@ -165,28 +157,16 @@ async function executeNode(
       for (let i = 0; i < total; i++) {
         const src = list[i];
         const variant: Variant = {
-          id: newVariantId(),
-          projectId: ctx.projectId,
+          id: newVariantId(), projectId: ctx.projectId,
           parentMoleculeId: ctx.molecule.id,
-          kind:
-            src.kind === 'substitution'
-              ? 'substitution'
-              : src.kind === 'deletion'
-              ? 'deletion'
-              : 'insertion',
+          kind: src.kind === 'substitution' ? 'substitution'
+            : src.kind === 'deletion' ? 'deletion' : 'insertion',
           origin: 'somatic',
-          hgvs: src.hgvs,
-          position: src.position,
-          ref: src.ref,
-          alt: src.alt,
-          predictions: [],
-          createdIn: 'flow',
+          hgvs: src.hgvs, position: src.position, ref: src.ref, alt: src.alt,
+          predictions: [], createdIn: 'flow',
           createdAt: new Date().toISOString(),
         };
-        const prediction = await engine.predictStability({
-          molecule: ctx.molecule,
-          variant,
-        });
+        const prediction = await engine.predictStability({ molecule: ctx.molecule, variant });
         scored.push({ variant, prediction, note: src.note });
         ctx.onProgress(i + 1, total);
       }
@@ -218,13 +198,9 @@ async function executeNode(
     case 'ai_hypothesis': {
       const evidence = inputs.evidence as PipelineRow[] | undefined;
       const rowsForAI = evidence ?? currentRows;
-      if (rowsForAI.length === 0) {
-        out.set('hyp', null);
-        return { outputs: out };
-      }
+      if (rowsForAI.length === 0) { out.set('hyp', null); return { outputs: out }; }
       const top = rowsForAI[0];
-      const ai = getCoScientist();
-      const hyp = await ai.hypothesize({
+      const hyp = await getCoScientist().hypothesize({
         projectId: ctx.projectId,
         molecule: ctx.molecule,
         variant: top.variant,
@@ -240,19 +216,11 @@ async function executeNode(
       const lines = ['rank,hgvs,ddg_lo,ddg,ddg_hi,note'];
       data.forEach((r, i) => {
         const [lo, hi] = r.prediction.deltaDeltaGCI;
-        lines.push(
-          [
-            i + 1,
-            r.variant.hgvs,
-            lo.toFixed(2),
-            r.prediction.deltaDeltaG.toFixed(2),
-            hi.toFixed(2),
-            csvEscape(r.note),
-          ].join(',')
-        );
+        lines.push([i + 1, r.variant.hgvs,
+          lo.toFixed(2), r.prediction.deltaDeltaG.toFixed(2), hi.toFixed(2),
+          csvEscape(r.note)].join(','));
       });
-      const content = lines.join('\n') + '\n';
-      if (ctx.onExport) ctx.onExport(filename, content, 'text/csv');
+      if (ctx.onExport) ctx.onExport(filename, lines.join('\n') + '\n', 'text/csv');
       out.set('done', { filename, rows: data.length });
       return { outputs: out };
     }
@@ -262,17 +230,13 @@ async function executeNode(
       const filename = String(node.params.filename ?? 'results.json');
       const content = JSON.stringify(
         data.map((r, i) => ({
-          rank: i + 1,
-          hgvs: r.variant.hgvs,
+          rank: i + 1, hgvs: r.variant.hgvs,
           deltaDeltaG: r.prediction.deltaDeltaG,
           deltaDeltaGCI: r.prediction.deltaDeltaGCI,
           method: r.prediction.method,
           methodVersion: r.prediction.methodVersion,
           note: r.note,
-        })),
-        null,
-        2
-      );
+        })), null, 2);
       if (ctx.onExport) ctx.onExport(filename, content, 'application/json');
       out.set('done', { filename, rows: data.length });
       return { outputs: out };
