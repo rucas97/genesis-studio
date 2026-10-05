@@ -1,26 +1,18 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
-  EventLog,
-  newEventLogId,
   newMoleculeId,
-  newProjectId,
   type Molecule,
 } from '@genesis/shared';
 import { FlowCanvas } from '../flow/FlowCanvas';
 import { FlowResults } from '../flow/FlowResults';
-import {
-  runPipeline,
-  type PipelineRow,
-} from '../flow/runPipeline';
+import { runPipeline, type PipelineRow } from '../flow/runPipeline';
+import { useProject } from '../state/ProjectContext';
 
 const DEMO_PDB = '4HJO';
 const PROTEIN = 'EGFR';
 
 export function FlowTab() {
-  const projectId = useMemo(() => newProjectId(), []);
-  const logRef = useRef<EventLog | null>(null);
-  if (!logRef.current) logRef.current = new EventLog(newEventLogId(), projectId);
-  const log = logRef.current;
+  const { log, projectId, sendToPlay, refreshActionCount } = useProject();
 
   const molecule = useMemo<Molecule>(
     () => ({
@@ -43,8 +35,6 @@ export function FlowTab() {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [activeNode, setActiveNode] = useState<string | null>(null);
-  const [actionCount, setActionCount] = useState(0);
-  const [logVerified, setLogVerified] = useState<boolean | null>(null);
   const [lastRunMs, setLastRunMs] = useState<number | null>(null);
 
   const handleRun = useCallback(async () => {
@@ -52,7 +42,6 @@ export function FlowTab() {
     setRunning(true);
     setRows([]);
     setProgress({ done: 0, total: 0 });
-    setLogVerified(null);
 
     const t0 = performance.now();
 
@@ -64,6 +53,7 @@ export function FlowTab() {
       payload: { label: 'EGFR stability pipeline' },
       timestamp: new Date().toISOString(),
     });
+    refreshActionCount();
 
     try {
       const result = await runPipeline({
@@ -72,7 +62,6 @@ export function FlowTab() {
         onProgress: (done, total) => setProgress({ done, total }),
         onActiveNode: setActiveNode,
       });
-
       setRows(result.rows);
 
       await log.append({
@@ -83,20 +72,20 @@ export function FlowTab() {
         payload: { run: result.run },
         timestamp: new Date().toISOString(),
       });
-
-      setActionCount(log.length);
+      refreshActionCount();
       setLastRunMs(Math.round(performance.now() - t0));
     } finally {
       setRunning(false);
       setActiveNode(null);
     }
-  }, [running, log, projectId, molecule]);
+  }, [running, log, projectId, molecule, refreshActionCount]);
 
-  const handleVerify = useCallback(async () => {
-    const ok = await log.verify();
-    setLogVerified(ok);
-    setActionCount(log.length);
-  }, [log]);
+  const handleSendToPlay = useCallback(
+    (row: PipelineRow) => {
+      sendToPlay({ variant: row.variant, molecule });
+    },
+    [sendToPlay, molecule]
+  );
 
   return (
     <div className="flow-layout">
@@ -105,7 +94,7 @@ export function FlowTab() {
           <FlowCanvas activeNodeId={activeNode} />
         </div>
         <div className="flow-results-wrap">
-          <FlowResults rows={rows} />
+          <FlowResults rows={rows} onSendToPlay={handleSendToPlay} />
         </div>
       </div>
 
@@ -142,22 +131,12 @@ export function FlowTab() {
           </p>
         </div>
 
-        <div className="session-footer">
-          <div>
-            {actionCount} action{actionCount === 1 ? '' : 's'} logged
-          </div>
-          <button
-            className="link"
-            disabled={actionCount === 0}
-            onClick={handleVerify}
-          >
-            Verify session
-          </button>
-          {logVerified !== null && (
-            <div className={logVerified ? 'ok' : 'bad'}>
-              {logVerified ? '✓ chain intact' : '✗ chain broken'}
-            </div>
-          )}
+        <div className="panel">
+          <div className="panel-label">Bridge</div>
+          <p className="panel-hint">
+            Click <strong>Send to Play</strong> on any row to open that variant
+            in the 3D sandbox with the prediction preloaded.
+          </p>
         </div>
       </aside>
     </div>

@@ -7,6 +7,13 @@ export interface CAAtom {
   residueOneLetter: string;
 }
 
+export type PDBSource = 'local' | 'rcsb';
+
+export interface LoadedPDB {
+  text: string;
+  source: PDBSource;
+}
+
 const THREE_TO_ONE: Record<string, string> = {
   ALA: 'A', ARG: 'R', ASN: 'N', ASP: 'D', CYS: 'C',
   GLN: 'Q', GLU: 'E', GLY: 'G', HIS: 'H', ILE: 'I',
@@ -14,12 +21,6 @@ const THREE_TO_ONE: Record<string, string> = {
   SER: 'S', THR: 'T', TRP: 'W', TYR: 'Y', VAL: 'V',
 };
 
-/**
- * Parse alpha-carbon coordinates from a PDB file.
- * PDB is fixed-column: atom name cols 13-16, residue name 18-20,
- * residue seq 23-26, x 31-38, y 39-46, z 47-54.
- * Keeps the first CA per residue (ignores alt-locs).
- */
 export function parsePDBCA(text: string): CAAtom[] {
   const atoms: CAAtom[] = [];
   const seen = new Set<number>();
@@ -56,8 +57,30 @@ export function centerAtoms(atoms: CAAtom[]): CAAtom[] {
   return atoms.map((a) => ({ ...a, x: a.x - cx, y: a.y - cy, z: a.z - cz }));
 }
 
-export async function fetchPDB(pdbId: string): Promise<string> {
-  const res = await fetch(`https://files.rcsb.org/download/${pdbId}.pdb`);
-  if (!res.ok) throw new Error(`RCSB returned ${res.status} for ${pdbId}`);
-  return res.text();
+/**
+ * Load a PDB file.
+ *
+ * Tries the bundled copy first (apps/desktop/public/<id>.pdb). If that
+ * 404s, falls back to RCSB. The source is returned so the UI can say
+ * whether the demo ran offline or over the network.
+ *
+ * To prime the local cache, run: bash scripts/fetch-pdb.sh 4HJO
+ */
+export async function loadPDB(pdbId: string): Promise<LoadedPDB> {
+  const localUrl = `${import.meta.env.BASE_URL}${pdbId}.pdb`;
+  try {
+    const local = await fetch(localUrl);
+    if (local.ok) {
+      const text = await local.text();
+      if (text.startsWith('HEADER') || text.startsWith('ATOM')) {
+        return { text, source: 'local' };
+      }
+    }
+  } catch {
+    // fall through to RCSB
+  }
+
+  const remote = await fetch(`https://files.rcsb.org/download/${pdbId}.pdb`);
+  if (!remote.ok) throw new Error(`RCSB returned ${remote.status} for ${pdbId}`);
+  return { text: await remote.text(), source: 'rcsb' };
 }

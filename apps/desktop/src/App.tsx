@@ -1,38 +1,64 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import { ProjectProvider, useProject, type Tab } from './state/ProjectContext';
 import { PlayTab } from './tabs/PlayTab';
 import { FlowTab } from './tabs/FlowTab';
 import { EmergenceTab } from './tabs/EmergenceTab';
 
-type Tab = 'play' | 'flow' | 'emergence';
-
 export function App() {
-  const [tab, setTab] = useState<Tab>('play');
+  return (
+    <ProjectProvider>
+      <Shell />
+    </ProjectProvider>
+  );
+}
+
+function Shell() {
+  const {
+    activeTab,
+    setActiveTab,
+    actionCount,
+    logVerified,
+    verifyLog,
+  } = useProject();
 
   return (
     <div className="app">
       <header className="topbar">
         <div className="brand">GENESIS Studio</div>
         <nav className="tabs">
-          <TabButton active={tab === 'play'} onClick={() => setTab('play')}>
+          <TabButton active={activeTab === 'play'} onClick={() => setActiveTab('play')}>
             Play
           </TabButton>
-          <TabButton active={tab === 'flow'} onClick={() => setTab('flow')}>
+          <TabButton active={activeTab === 'flow'} onClick={() => setActiveTab('flow')}>
             Flow
           </TabButton>
-          <TabButton
-            active={tab === 'emergence'}
-            disabled
-            onClick={() => setTab('emergence')}
-          >
+          <TabButton active={activeTab === 'emergence'} disabled onClick={() => setActiveTab('emergence')}>
             Emergence
           </TabButton>
         </nav>
-        <div className="badge">Research-use-only</div>
+        <div className="topbar-right">
+          <span className="action-count">
+            {actionCount} action{actionCount === 1 ? '' : 's'}
+          </span>
+          {logVerified !== null && (
+            <span className={logVerified ? 'ok' : 'bad'}>
+              {logVerified ? '✓ chain intact' : '✗ chain broken'}
+            </span>
+          )}
+          <button
+            className="link"
+            disabled={actionCount === 0}
+            onClick={verifyLog}
+          >
+            Verify session
+          </button>
+          <span className="badge">Research-use-only</span>
+        </div>
       </header>
       <main className="content">
-        {tab === 'play' && <PlayTab />}
-        {tab === 'flow' && <FlowTab />}
-        {tab === 'emergence' && <EmergenceTab />}
+        {activeTab === 'play' && <PlayTab />}
+        {activeTab === 'flow' && <FlowTab />}
+        {activeTab === 'emergence' && <EmergenceTab />}
       </main>
     </div>
   );

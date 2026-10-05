@@ -2,9 +2,10 @@ import type { PipelineRow } from './runPipeline';
 
 export interface FlowResultsProps {
   rows: PipelineRow[];
+  onSendToPlay: (row: PipelineRow) => void;
 }
 
-export function FlowResults({ rows }: FlowResultsProps) {
+export function FlowResults({ rows, onSendToPlay }: FlowResultsProps) {
   if (rows.length === 0) {
     return (
       <div className="flow-results-empty">
@@ -22,6 +23,7 @@ export function FlowResults({ rows }: FlowResultsProps) {
           <th>ΔΔG</th>
           <th>95% CI</th>
           <th>Note</th>
+          <th className="actions">Action</th>
         </tr>
       </thead>
       <tbody>
@@ -38,6 +40,14 @@ export function FlowResults({ rows }: FlowResultsProps) {
                 {r.prediction.deltaDeltaGCI[1].toFixed(2)}]
               </td>
               <td className="note">{r.note}</td>
+              <td className="actions">
+                <button
+                  className="send-to-play"
+                  onClick={() => onSendToPlay(r)}
+                >
+                  Send to Play →
+                </button>
+              </td>
             </tr>
           );
         })}

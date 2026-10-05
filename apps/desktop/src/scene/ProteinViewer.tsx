@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { fetchPDB, parsePDBCA, centerAtoms, type CAAtom } from './pdbLoader';
+import {
+  loadPDB,
+  parsePDBCA,
+  centerAtoms,
+  type CAAtom,
+  type PDBSource,
+} from './pdbLoader';
 import type { PickedResidue } from '../state/usePlaySession';
 
 export interface ProteinViewerProps {
@@ -9,10 +15,15 @@ export interface ProteinViewerProps {
   pickedResidueNumber: number | null;
   mutatedResidueNumber: number | null;
   onPickResidue: (picked: PickedResidue | null) => void;
+  onSourceKnown?: (source: PDBSource) => void;
 }
 
 export function ProteinViewer({
-  pdbId, pickedResidueNumber, mutatedResidueNumber, onPickResidue,
+  pdbId,
+  pickedResidueNumber,
+  mutatedResidueNumber,
+  onPickResidue,
+  onSourceKnown,
 }: ProteinViewerProps) {
   const [atoms, setAtoms] = useState<CAAtom[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -21,18 +32,28 @@ export function ProteinViewer({
     let cancelled = false;
     setAtoms(null);
     setError(null);
-    fetchPDB(pdbId)
-      .then((text) => { if (!cancelled) setAtoms(centerAtoms(parsePDBCA(text))); })
-      .catch((e) => { if (!cancelled) setError(String(e?.message ?? e)); });
-    return () => { cancelled = true; };
-  }, [pdbId]);
+    loadPDB(pdbId)
+      .then(({ text, source }) => {
+        if (cancelled) return;
+        onSourceKnown?.(source);
+        setAtoms(centerAtoms(parsePDBCA(text)));
+      })
+      .catch((e) => {
+        if (!cancelled) setError(String(e?.message ?? e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pdbId, onSourceKnown]);
 
   if (error) {
     return (
       <div className="placeholder">
         <div>Could not load {pdbId}.</div>
         <div><code>{error}</code></div>
-        <div>RCSB is unreachable. Offline bundling is the next step.</div>
+        <div>
+          Try priming the local cache: <code>bash scripts/fetch-pdb.sh {pdbId}</code>
+        </div>
       </div>
     );
   }

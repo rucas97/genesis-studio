@@ -1,10 +1,8 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  EventLog,
-  newEventLogId,
   newMoleculeId,
-  newProjectId,
   newVariantId,
+  type EventLog,
   type Hypothesis,
   type Molecule,
   type ProjectId,
@@ -24,7 +22,6 @@ export type SessionStatus = 'idle' | 'predicting' | 'done' | 'error';
 
 export interface PlaySession {
   molecule: Molecule;
-  projectId: ProjectId;
   picked: PickedResidue | null;
   variant: Variant | null;
   prediction: StabilityPrediction | null;
@@ -32,40 +29,37 @@ export interface PlaySession {
   hypothesis: Hypothesis | null;
   status: SessionStatus;
   error: string | null;
-  actionCount: number;
-  logVerified: boolean | null;
   pickResidue(picked: PickedResidue | null): void;
   mutate(newResidue: string): Promise<void>;
-  reset(): void;
-  verifyLog(): Promise<void>;
+  bridgeIn(variant: Variant, molecule: Molecule): Promise<void>;
 }
 
 export interface PlaySessionOptions {
+  log: EventLog;
+  projectId: ProjectId;
   pdbId: string;
   proteinName: string;
   geneName: string;
 }
 
 export function usePlaySession(options: PlaySessionOptions): PlaySession {
-  const projectId = useMemo(() => newProjectId(), []);
-  const logRef = useRef<EventLog | null>(null);
-  if (!logRef.current) logRef.current = new EventLog(newEventLogId(), projectId);
+  const { log, projectId, pdbId, proteinName, geneName } = options;
 
   const molecule = useMemo<Molecule>(
     () => ({
       id: newMoleculeId(),
       projectId,
       kind: 'protein',
-      name: options.proteinName,
-      description: `${options.geneName} · ${options.pdbId}`,
+      name: proteinName,
+      description: `${geneName} · ${pdbId}`,
       sequence: '',
-      structure: { kind: 'pdb', pdbId: options.pdbId },
+      structure: { kind: 'pdb', pdbId },
       variantIds: [],
       createdIn: 'play',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }),
-    [projectId, options.pdbId, options.proteinName, options.geneName]
+    [projectId, pdbId, proteinName, geneName]
   );
 
   const [picked, setPicked] = useState<PickedResidue | null>(null);
@@ -75,8 +69,6 @@ export function usePlaySession(options: PlaySessionOptions): PlaySession {
   const [hypothesis, setHypothesis] = useState<Hypothesis | null>(null);
   const [status, setStatus] = useState<SessionStatus>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [actionCount, setActionCount] = useState(0);
-  const [logVerified, setLogVerified] = useState<boolean | null>(null);
 
   const pickResidue = useCallback((p: PickedResidue | null) => {
     setPicked(p);
@@ -86,58 +78,41 @@ export function usePlaySession(options: PlaySessionOptions): PlaySession {
     setHypothesis(null);
     setStatus('idle');
     setError(null);
-    setLogVerified(null);
   }, []);
 
-  const mutate = useCallback(
-    async (newResidue: string) => {
-      if (!picked) return;
-      const log = logRef.current!;
+  const runPrediction = useCallback(
+    async (v: Variant, m: Molecule, source: 'user' | 'bridge') => {
       setStatus('predicting');
       setError(null);
-
       try {
-        const from = picked.residueOneLetter;
-        const to = newResidue.toUpperCase();
-        const hgvs = `p.${from}${picked.residueNumber}${to}`;
-
-        const newVariant: Variant = {
-          id: newVariantId(),
-          projectId,
-          parentMoleculeId: molecule.id,
-          kind: 'substitution',
-          origin: 'synthetic',
-          hgvs,
-          position: picked.residueNumber,
-          ref: from,
-          alt: to,
-          predictions: [],
-          createdIn: 'play',
-          createdAt: new Date().toISOString(),
-        };
-
         await log.append({
           projectId,
           mode: 'play',
           actor: 'user',
           type: 'play.mutate',
-          payload: { variant: newVariant, moleculeId: molecule.id },
+          payload: { variant: v, moleculeId: m.id, source },
           timestamp: new Date().toISOString(),
         });
 
         const engine = getStabilityEngine();
-        const result = await engine.predictStability({ molecule, variant: newVariant });
+        const result = await engine.predictStability({ molecule: m, variant: v });
         setPrediction(result);
-        setVariant(newVariant);
+        setVariant(v);
 
         const ai = getCoScientist();
         const obs = await ai.observe({
-          projectId, molecule, variant: newVariant, predictions: [result],
+          projectId,
+          molecule: m,
+          variant: v,
+          predictions: [result],
         });
         setObservation(obs);
 
         const hyp = await ai.hypothesize({
-          projectId, molecule, variant: newVariant, predictions: [result],
+          projectId,
+          molecule: m,
+          variant: v,
+          predictions: [result],
         });
         setHypothesis(hyp);
 
@@ -150,31 +125,67 @@ export function usePlaySession(options: PlaySessionOptions): PlaySession {
           timestamp: new Date().toISOString(),
         });
 
-        setActionCount(log.length);
         setStatus('done');
       } catch (e) {
         setStatus('error');
         setError(String((e as Error)?.message ?? e));
       }
     },
-    [picked, molecule, projectId]
+    [log, projectId]
   );
 
-  const reset = useCallback(() => {
-    pickResidue(null);
-    setLogVerified(null);
-  }, [pickResidue]);
+  const mutate = useCallback(
+    async (newResidue: string) => {
+      if (!picked) return;
+      const from = picked.residueOneLetter;
+      const to = newResidue.toUpperCase();
+      const newVariant: Variant = {
+        id: newVariantId(),
+        projectId,
+        parentMoleculeId: molecule.id,
+        kind: 'substitution',
+        origin: 'synthetic',
+        hgvs: `p.${from}${picked.residueNumber}${to}`,
+        position: picked.residueNumber,
+        ref: from,
+        alt: to,
+        predictions: [],
+        createdIn: 'play',
+        createdAt: new Date().toISOString(),
+      };
+      await runPrediction(newVariant, molecule, 'user');
+    },
+    [picked, molecule, projectId, runPrediction]
+  );
 
-  const verifyLog = useCallback(async () => {
-    const log = logRef.current!;
-    const ok = await log.verify();
-    setLogVerified(ok);
-    setActionCount(log.length);
-  }, []);
+  const bridgeIn = useCallback(
+    async (v: Variant, m: Molecule) => {
+      setPicked({
+        index: -1,
+        residueNumber: v.position ?? 0,
+        residueOneLetter: v.ref ?? '?',
+        atom: { x: 0, y: 0, z: 0 },
+      });
+      await runPrediction(v, m, 'bridge');
+    },
+    [runPrediction]
+  );
 
   return {
-    molecule, projectId, picked, variant, prediction, observation, hypothesis,
-    status, error, actionCount, logVerified,
-    pickResidue, mutate, reset, verifyLog,
+    molecule,
+    picked,
+    variant,
+    prediction,
+    observation,
+    hypothesis,
+    status,
+    error,
+    pickResidue,
+    mutate,
+    bridgeIn,
   };
 }
+
+// Suppress unused warning for useEffect/useRef imports if removed later.
+void useEffect;
+void useRef;

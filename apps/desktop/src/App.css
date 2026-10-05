@@ -447,3 +447,59 @@ button.link:disabled { color: #444; cursor: not-allowed; }
   color: #66ccff;
   text-align: center;
 }
+
+/* === Topbar right cluster (shared log status) === */
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.topbar-right .action-count {
+  font-size: 11px;
+  color: #666;
+  font-family: ui-monospace, Menlo, monospace;
+}
+.topbar-right .ok { color: #88ff88; font-size: 11px; }
+.topbar-right .bad { color: #ff8888; font-size: 11px; }
+.topbar-right .link { font-size: 11px; }
+.topbar-right .badge {
+  font-size: 10px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+}
+
+/* === Bridge panel (Flow -> Play) === */
+
+.bridge-panel {
+  border-color: #2a4a5a;
+  background: linear-gradient(180deg, #0f1a20, #0d1418);
+}
+.bridge-panel .panel-label { color: #66ccff; }
+
+/* === Send to Play button in Flow results === */
+
+.flow-results td.actions {
+  width: 140px;
+  text-align: right;
+}
+.flow-results th.actions {
+  width: 140px;
+  text-align: right;
+}
+button.send-to-play {
+  background: transparent;
+  border: 1px solid #2a4a5a;
+  color: #66ccff;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms;
+}
+button.send-to-play:hover {
+  background: rgba(102, 204, 255, 0.08);
+  border-color: #66ccff;
+}
