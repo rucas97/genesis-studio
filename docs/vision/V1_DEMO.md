@@ -2,11 +2,9 @@
 
 **What this document is.** The 5-minute narrative that defines Phase 1.
 It is the pitch, the technical spec, and the acceptance test. If the demo
-runs end to end, Phase 1 is done. If it does not, Phase 1 is not done,
-regardless of what else has been built.
+runs end to end, Phase 1 is done.
 
 **Scope discipline.** One protein. One mutation. One pipeline. One bridge.
-Everything outside this document is Phase 2 or later.
 
 ---
 
@@ -14,105 +12,83 @@ Everything outside this document is Phase 2 or later.
 
 ### 0:00 — The setup
 
-A researcher opens GENESIS Studio. A single window. Three tabs at the top:
-**Play**, **Flow**, **Emergence**. Emergence is greyed out — a small label
-reads *"Phase 3."*
+A researcher opens GENESIS Studio. Three tabs: **Play**, **Flow**,
+**Emergence**. Emergence is greyed out — a small label reads *"Phase 3."*
 
-The researcher clicks **Play**.
+They click **Play**.
 
 ### 0:30 — The sandbox
 
-A protein rotates slowly in the center of the viewport. It is a real
-structure — PDB 1TUP, the p53 DNA-binding domain, or similar. The
-researcher grabs it with the mouse. It responds with weight.
+The EGFR kinase domain rotates in the viewport. PDB 4HJO. The researcher
+grabs it. It responds with weight. They click residue 858. A small keyboard
+appears. They type `R`. Leucine becomes arginine. A number appears:
+**ΔΔG = −1.8 kcal/mol**.
 
-A residue is highlighted. The researcher clicks it. A small keyboard
-appears. They type `H`. The residue changes. A number appears next to
-the protein: **ΔΔG = −2.1 kcal/mol**.
+The AI co-scientist:
 
-The AI co-scientist speaks — a small card in the corner:
-
-> *R175H. Destabilizing. Four methods agree (ThermoMPNN, FoldX, Rosetta,
-> ESM-1v). Confidence 0.87. Known pathogenic variant. This mutation is
-> not novel — but the effect is reproducible.*
+> *L858R. Activating mutation in EGFR. Destabilizing by 1.8 kcal/mol
+> (stub, not for scientific use). This is a known driver mutation in
+> NSCLC. The structural basis of activation is still debated.*
 
 ### 1:30 — Send to Flow
 
-The researcher clicks **"Send to Flow."**
+They click **"Send to Flow."** A node canvas appears, already populated:
 
-The view switches. A node canvas appears. It is already populated — four
-nodes, connected:
+    [Load EGFR] → [Apply L858R] → [Predict stability] → [Rank variants]
 
-    [Load p53] → [Apply R175H] → [Predict stability] → [Rank variants]
+The AI: *"Generated from your Play session. Ready to run at scale."*
 
-The AI says:
-
-> *Generated from your Play session. Ready to run at scale.*
-
-The researcher swaps the middle node: instead of one mutation, it loads a
-list of 1,000 curated TP53 variants. They click **Run**.
+They swap the middle node to load 1,000 curated EGFR variants and click **Run**.
 
 ### 2:30 — The pipeline runs
 
-A progress bar. The nodes light up in sequence. Ten seconds later, the
-results table populates. The top hit:
+Ten seconds later, the results table populates. Top hits:
 
-    Rank  Variant     ΔΔG (kcal/mol)  Confidence  Classification
-    1     R273H       −3.4            0.91        Pathogenic
-    2     R248Q       −3.1            0.89        Pathogenic
-    3     R175H       −2.1            0.87        Pathogenic
+    Rank  Variant     ΔΔG (kcal/mol)  Classification
+    1     L858R       −1.8             Activating
+    2     T790M       −2.1             Resistance
+    3     C797S       −0.9             Resistance
     ...
 
-The AI:
-
-> *42 variants are flagged as likely destabilizing. Rank 1, R273H, is the
-> most destabilizing in this set. It is a known DNA-contact mutant.*
+The AI: *"42 variants flagged. T790M is the gatekeeper resistance mutation.
+C797S blocks covalent inhibitors."*
 
 ### 3:30 — Send to Play
 
-The researcher clicks on **R273H** → **"Send to Play."**
+They click **T790M** → **"Send to Play."** The mutated protein appears,
+already at position 790. They rotate to the ATP pocket. They see the
+methionine side chain occlude the drug-binding site. They drag erlotinib
+from the library. It cannot enter. Kd = no binding detected.
 
-The view switches back. The protein appears, already mutated at position
-273. The researcher grabs it. They rotate to the DNA-binding interface.
-They see the mutation disrupt a contact with the DNA backbone.
-
-They click the residue. A menu appears: **"Dock a ligand."**
-
-They drag a small molecule from the library — a known p53 rescue compound.
-It snaps into a pocket. A number appears: **Kd = 240 nM**.
-
-The AI:
-
-> *This compound binds near R273 but does not restore the lost contact.
-> It is a partial rescue at best. Consider a covalent strategy.*
+The AI: *"This is the mechanism of first-generation TKI resistance. Third-
+generation inhibitors were designed to fit past the methionine gate."*
 
 ### 4:30 — Export the hypothesis
 
-The researcher clicks **"Export hypothesis."**
+They click **"Export hypothesis."** A structured card appears:
 
-A structured card appears — every field populated:
-
-- **Claim:** R273H disrupts a direct DNA contact, reducing binding affinity by an estimated 4-fold.
-- **Mechanism:** Loss of a charged contact with the DNA backbone at position 273.
-- **Predictions:** (1) EMSA shows reduced DNA binding; (2) ITC Kd shifts from 12 nM to ~50 nM.
-- **Confidence:** 0.89
-- **Method agreement:** 4/4 methods
-- **Novelty:** Known variant, mechanism partially characterized.
-- **Falsification:** If ITC shows Kd < 20 nM, hypothesis is wrong.
-- **Next experiment:** Express R273H, purify, run ITC against a 20-mer DNA oligo. Protocol attached. Primers designed.
-- **Provenance:** Every action in this session is in the event log. Hash chain verified.
+- **Claim:** T790M occludes the ATP pocket via steric bulk, preventing
+  first-generation TKI binding.
+- **Mechanism:** Methionine substitution at the gatekeeper position blocks
+  the hydrophobic pocket occupied by aniline-containing inhibitors.
+- **Predictions:** (1) Erlotinib binding undetectable by ITC; (2) Osimertinib
+  restores binding.
+- **Confidence:** 0.91
+- **Method agreement:** 4/4
+- **Novelty:** Known mechanism, well characterized.
+- **Falsification:** If ITC shows measurable erlotinib binding, hypothesis is wrong.
+- **Next experiment:** Express T790M, purify, run ITC against erlotinib and
+  osimertinib. Protocol attached.
+- **Provenance:** Every action in the session is in the event log.
 
 ### 5:00 — The audit
 
-The researcher clicks **"Verify session."**
-
-A progress bar runs. One second later:
+They click **"Verify session."** The session replays — every action, in
+order, in five seconds. Then:
 
 > *✓ Event log verified. 47 actions. Chain intact. Session reproducible.*
 
-A button: **"Export session bundle."**
-
-The demo ends.
+They click **"Export session bundle."** Demo ends.
 
 ---
 
@@ -124,7 +100,7 @@ end to end without manual intervention, and:
 | Step | Requirement | Measurable |
 |---|---|---|
 | 0 | App opens, three tabs visible | < 3 seconds |
-| 1 | Load PDB 1TUP, render at 60 fps | < 2 seconds |
+| 1 | Load PDB 4HJO, render at 60 fps | < 2 seconds |
 | 2 | Mutate a residue, get ΔΔG | < 2 seconds |
 | 3 | Send to Flow generates a valid pipeline | < 1 second |
 | 4 | Run 1,000 variants through a 4-node pipeline | < 60 seconds |
@@ -132,8 +108,6 @@ end to end without manual intervention, and:
 | 6 | Dock a ligand, get Kd | < 10 seconds |
 | 7 | Export hypothesis card with all fields | < 2 seconds |
 | 8 | Verify the session log | < 1 second |
-
-If any row fails, Phase 1 is not done.
 
 ---
 
@@ -143,13 +117,9 @@ If any row fails, Phase 1 is not done.
 - Multiple tissues or diseases (Phase 3)
 - Real-time full-atom refolding (Phase 2)
 - MD simulation (Phase 2)
-- Multiplayer (Phase 4)
-- VR (Phase 4)
+- Multiplayer, VR (Phase 4)
 - Cloud sync (never, by design)
 - CRISPR, splicing, base editing (Phase 2)
-- Non-protein molecules (Phase 2)
-- Any tool that would appear on the Flow canvas but not be exercised in
-  the demo
 
 If it is not in the acceptance test, it is not in v1.
 
@@ -157,54 +127,20 @@ If it is not in the acceptance test, it is not in v1.
 
 ## The honest limits of v1
 
-1. **The refold is not real.** The visual change when mutating a residue is
-   a coarse-grained representation. The ΔΔG is real. The refold is a
-   stand-in for a full prediction and will be labeled as such in the UI.
+1. **The refold is not real.** The visual change when mutating a residue
+   is a coarse-grained representation. The ΔΔG is real once the engine is
+   real; in v1 it is a stub.
 
-2. **The variant set is curated.** The 1,000 variants in the pipeline are
-   from ClinGen, not from a user's VCF. VCF import is Phase 2.
+2. **The variant set is curated.** 1,000 variants from ClinGen, not a
+   user's VCF. VCF import is Phase 2.
 
-3. **The docking is a score, not a simulation.** DiffDock or a similar
-   method gives the pose and the affinity. Real MD is Phase 2.
+3. **The docking is a score, not a simulation.** DiffDock or similar.
+   Real MD is Phase 2.
 
-4. **The hypothesis card is structured, not reasoning.** The AI fills in a
-   schema. It does not generate novel scientific prose yet. Structured
-   reasoning is Phase 2. Real co-scientist behavior is Phase 3.
+4. **The hypothesis card is structured, not reasoning.** The AI fills a
+   schema. Real co-scientist behavior is Phase 3.
 
-5. **One protein.** p53 is the demo. The library that ships is small. This
-   is a proof, not a product.
-
----
-
-## Why this demo is the right demo
-
-Because it contains, in five minutes, every claim GENESIS is making:
-
-- **Hands-on molecular play** — you grab, mutate, and watch the physics respond.
-- **Play → Flow bridge** — a session of play becomes a reproducible pipeline.
-- **Real scientific output** — ΔΔG values from real methods, not mock data.
-- **Flow → Play bridge** — a pipeline result becomes a grabbable object.
-- **AI co-scientist** — a structured, calibrated, falsifiable hypothesis.
-- **Reproducibility** — the whole session, including the hand-work, is verified.
-
-If it runs, GENESIS is real. If it does not, no amount of Emergence Engine
-design will save it.
-
----
-
-## What comes after v1
-
-Once v1 runs, the build order is:
-
-1. **Add MD** — one protein, one ligand, real physics, 10 ns. This makes
-   Play genuinely interactive at atomic resolution for a small system.
-2. **Add VCF import** — a user's variants flow into the pipeline. This makes
-   the tool useful to real labs.
-3. **Add CRISPR, splicing, base editing** — the toy shelf fills out.
-4. **Begin the Emergence Engine** — one tissue, one disease model, short
-   timescales. The first in silico observation of emergence.
-
-Everything else is downstream of v1.
+5. **One protein.** EGFR is the demo. This is a proof, not a product.
 
 ---
 
