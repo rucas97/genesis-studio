@@ -1,37 +1,30 @@
 const DEFAULT_URL = 'http://127.0.0.1:8765';
 
-export interface DockInput {
+export interface DockRequest {
   pdbId: string;
-  proteinAtomIndex: number;
   ligandId: string;
-  ligandAtomIndex: number;
-  ligandX: number;
-  ligandY: number;
-  ligandZ: number;
-  proteinX: number;
-  proteinY: number;
-  proteinZ: number;
+  ligandSmiles: string;
+  /** Point on the protein, in Angstroms. Used as the search box center. */
+  center: { x: number; y: number; z: number };
+  /** Box edge length in Angstroms. */
+  boxSize?: number;
+  /** Only used by the stub runner as a geometric distance fallback. */
+  ligandPoint: { x: number; y: number; z: number };
 }
 
 export interface DockResult {
-  distanceAngstrom: number;
+  distanceAngstrom: number | null;
   estimatedKdNm: number;
+  bindingEnergyKcal: number | null;
   method: string;
   methodVersion: string;
   notes: string;
 }
 
-/**
- * Ask the Python sidecar to score a docking pose.
- *
- * If the sidecar is running with a real docking backend (AutoDock Vina),
- * the score is real. If not, the sidecar's stub returns a geometric
- * estimate. The UI labels which one produced the number.
- */
 export async function dockWithSidecar(
-  input: DockInput,
+  req: DockRequest,
   baseUrl: string = DEFAULT_URL,
-  timeoutMs = 15000
+  timeoutMs = 300000 // 5 min for real Vina
 ): Promise<DockResult | null> {
   try {
     const controller = new AbortController();
@@ -39,7 +32,7 @@ export async function dockWithSidecar(
     const res = await fetch(`${baseUrl}/dock`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
+      body: JSON.stringify(req),
       signal: controller.signal,
     });
     clearTimeout(t);
@@ -50,13 +43,8 @@ export async function dockWithSidecar(
   }
 }
 
-/**
- * Local geometric fallback. Used when the sidecar is absent.
- * Deterministic. Not science.
- */
-export function localGeometricDock(
-  distanceAngstrom: number,
-): DockResult {
+/** Local fallback. Deterministic. Not science. */
+export function localGeometricDock(distanceAngstrom: number): DockResult {
   const optimal = 3.5;
   const sigma = 1.5;
   const score = Math.exp(-((distanceAngstrom - optimal) ** 2) / (2 * sigma * sigma));
@@ -64,6 +52,7 @@ export function localGeometricDock(
   return {
     distanceAngstrom,
     estimatedKdNm: kdNm,
+    bindingEnergyKcal: null,
     method: 'Local geometric stub',
     methodVersion: '0.0.1',
     notes: 'Not a real docking score. Start the Python sidecar for better estimates.',

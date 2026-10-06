@@ -1724,3 +1724,172 @@ button.send-to-play:hover {
   display: flex; align-items: center; justify-content: center;
   height: 100%; color: #556; font-size: 12px;
 }
+
+/* Inspector */
+.inspector {
+  width: 340px; flex-shrink: 0;
+  border-left: 1px solid #1f1f1f; background: #0b0b0b;
+  display: flex; flex-direction: column; height: 100%; font-size: 12px;
+}
+.inspector-tabs {
+  display: flex; border-bottom: 1px solid #1f1f1f;
+  flex-shrink: 0; background: #0d0d0d;
+}
+.inspector-tab {
+  flex: 1; background: transparent; border: none;
+  border-right: 1px solid #141414; color: #667;
+  padding: 10px 6px; cursor: pointer; font-size: 10px;
+  text-transform: uppercase; letter-spacing: 1.2px;
+  font-family: inherit; transition: color 100ms, background 100ms;
+}
+.inspector-tab:last-child { border-right: none; }
+.inspector-tab:hover { color: #b0bcc4; background: #101010; }
+.inspector-tab.active {
+  color: #66ccff; background: #0f1720;
+  box-shadow: inset 0 -2px 0 #66ccff;
+}
+.inspector-body {
+  flex: 1; overflow-y: auto; padding: 8px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.inspector-body::-webkit-scrollbar { width: 8px; }
+.inspector-body::-webkit-scrollbar-track { background: #0a0a0a; }
+.inspector-body::-webkit-scrollbar-thumb { background: #1f262c; border-radius: 4px; }
+.inspector-body::-webkit-scrollbar-thumb:hover { background: #2a3a44; }
+
+.section {
+  background: #0e0e0e; border: 1px solid #161616;
+  border-radius: 5px; overflow: hidden;
+}
+.section-header {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  background: transparent; border: none; color: #a8b4bc;
+  padding: 8px 10px; cursor: pointer; font-family: inherit;
+  text-align: left; transition: background 100ms;
+}
+.section-header:hover { background: #121212; }
+.section-caret { color: #556; font-size: 10px; }
+.section-title {
+  font-size: 10px; text-transform: uppercase;
+  letter-spacing: 1.4px; font-weight: 600; flex: 1;
+}
+.section-count {
+  font-size: 10px; color: #556;
+  font-family: ui-monospace, Menlo, monospace;
+}
+.section-body {
+  padding: 10px; border-top: 1px solid #141414; background: #090909;
+}
+
+.kv {
+  display: flex; justify-content: space-between;
+  align-items: baseline; padding: 4px 0;
+  font-size: 11px; border-bottom: 1px solid #121212;
+}
+.kv:last-child { border-bottom: none; }
+.kv-key { color: #667; }
+.kv-val { color: #c8d4dc; text-align: right; }
+.kv-val.mono { font-family: ui-monospace, Menlo, monospace; }
+.kv-val.small { font-size: 10px; }
+.kv-val.bad { color: #ff8888; }
+.kv-val.good { color: #88ff88; }
+
+.hint-text { font-size: 11px; color: #778; line-height: 1.5; margin-top: 4px; }
+
+.inspector .panel { background: transparent; border: none; padding: 0; }
+.inspector .panel-label { display: none; }
+.inspector .protein-library, .inspector .ligand-shelf { max-height: none; }
+.inspector .protein-item, .inspector .ligand-item { padding: 6px 8px; font-size: 11px; }
+.inspector .protein-gene { font-size: 11px; }
+.inspector .protein-name { font-size: 10px; }
+.inspector .protein-disease { font-size: 9px; }
+.inspector .protein-pdb { font-size: 9px; }
+.inspector .ligand-name { font-size: 11px; }
+.inspector .ligand-formula { font-size: 9px; }
+.inspector .ligand-target { font-size: 10px; }
+.inspector .ligand-approx { font-size: 8px; }
+.inspector .panel-value { font-size: 13px; }
+.inspector .panel-hint { font-size: 10px; }
+.inspector button.primary { width: 100%; margin-top: 8px; padding: 8px; font-size: 11px; }
+
+/* Sequence viewer */
+.seq-viewer {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px; padding: 8px 4px;
+  overflow-x: auto; line-height: 1.4;
+}
+.seq-line, .seq-numbers { display: flex; gap: 0; white-space: nowrap; }
+.seq-numbers { margin-top: 2px; }
+.seq-letter {
+  display: inline-block; width: 16px; text-align: center;
+  color: #8899aa; cursor: pointer; user-select: none;
+  border-radius: 2px; transition: color 100ms, background 100ms;
+}
+.seq-letter:hover { background: #1a2028; color: #eaeaea; }
+.seq-letter.picked { color: #0a0a0a; background: #ffe066; font-weight: 700; }
+.seq-letter.mutated { color: #0a0a0a; background: #ff3a3a; font-weight: 700; }
+.seq-num {
+  display: inline-block; width: 16px; font-size: 8px;
+  color: #556; text-align: center;
+}
+.seq-meta {
+  margin-top: 6px; font-size: 11px; color: #eaeaea;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+.seq-meta-secondary { color: #667; }
+.seq-empty {
+  font-size: 11px; color: #556; font-style: italic;
+  padding: 8px 0; font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+/* SS legend */
+.ss-legend {
+  position: absolute; top: 16px; left: 16px;
+  display: flex; flex-direction: column; gap: 4px;
+  background: rgba(10, 12, 15, 0.85);
+  border: 1px solid #1a1f24; border-radius: 6px;
+  padding: 8px 10px; font-size: 10px;
+  font-family: ui-monospace, Menlo, monospace;
+  color: #8899aa; pointer-events: none;
+}
+.ss-legend-item { display: flex; align-items: center; gap: 8px; }
+.ss-dot {
+  width: 10px; height: 4px; border-radius: 2px; display: inline-block;
+}
+.ss-dot.helix { background: #5aa9ff; }
+.ss-dot.sheet { background: #f6b84a; }
+.ss-dot.coil { background: #6a7a92; }
+.ss-label { text-transform: lowercase; letter-spacing: 0.5px; }
+
+/* Placed ligands */
+.placed-list { display: flex; flex-direction: column; gap: 4px; }
+.placed-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; background: #0e1216;
+  border: 1px solid #1a1f24; border-radius: 4px; font-size: 11px;
+}
+.placed-name { flex: 1; color: #c8d4dc; }
+.placed-pos { font-size: 10px; color: #556; font-family: ui-monospace, Menlo, monospace; }
+.placed-remove {
+  background: transparent; border: none; color: #8899aa;
+  font-size: 14px; cursor: pointer; padding: 0 4px; font-family: inherit;
+}
+.placed-remove:hover { color: #ff8888; }
+
+/* Replay mini view */
+.replay-snapshot {
+  height: 220px; border: 1px solid #1a2a36; border-radius: 6px;
+  background: linear-gradient(180deg, #0a1018, #070a0f);
+  overflow: hidden; margin-bottom: 12px; position: relative;
+}
+.mini-view-canvas { width: 100%; height: 100%; }
+.mini-view-label {
+  position: absolute; bottom: 8px; left: 10px;
+  font-size: 10px; color: #8899aa;
+  font-family: ui-monospace, Menlo, monospace;
+  background: rgba(10,10,10,0.75); padding: 3px 8px; border-radius: 3px;
+}
+.mini-view-loading, .mini-view-error {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; color: #556; font-size: 12px;
+}

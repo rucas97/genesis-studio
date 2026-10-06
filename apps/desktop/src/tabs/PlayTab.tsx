@@ -7,13 +7,17 @@ import { AICard } from '../panels/AICard';
 import { ProteinLibraryPanel } from '../panels/ProteinLibraryPanel';
 import { LigandShelf } from '../playground/LigandShelf';
 import { ToolBelt } from '../playground/ToolBelt';
+import { Inspector, Section } from '../panels/Inspector';
+import { SequenceViewer } from '../panels/SequenceViewer';
+import { SecondaryStructureLegend } from '../scene/SecondaryStructureLegend';
 import { useProject } from '../state/ProjectContext';
 import { getProteinById, type ProteinEntry } from '../data/proteinLibrary';
-import { getLigandById, type LigandEntry } from '../data/ligandLibrary';
-import type { PDBSource } from '../scene/pdbLoader';
+import type { LigandEntry } from '../data/ligandLibrary';
+import type { PDBSource, CAAtom } from '../scene/pdbLoader';
+import { loadPDB, parsePDBCA, centerAtoms } from '../scene/pdbLoader';
 import { listCoScientists, getCoScientist, tryRegisterOllama } from '@genesis/ai';
 import { cutAt, initialSegment, mergeSegments, type Segment } from '../scene/segments';
-import { dockWithSidecar, localGeometricDock } from '@genesis/engines';
+import { dockWithSidecar, localGeometricDock, type DockResult } from '@genesis/engines';
 
 const DEFAULT_PROTEIN = 'egfr';
 
@@ -28,10 +32,7 @@ interface BindingInfo {
   ligandName: string;
   ligandAtomIndex: number;
   proteinAtomIndex: number;
-  distance: number;
-  kdNm: number;
-  method: string;
-  notes: string;
+  result: DockResult;
 }
 
 type AIState =
@@ -46,11 +47,7 @@ function nextLigandInstanceId(): string {
 }
 
 export function PlayTab() {
-  const {
-    log, projectId,
-    pendingSendToPlay, clearPendingSendToPlay,
-    refreshActionCount,
-  } = useProject();
+  const { log, projectId, pendingSendToPlay, clearPendingSendToPlay, refreshActionCount } = useProject();
 
   const [proteinId, setProteinId] = useState(DEFAULT_PROTEIN);
   const protein = useMemo(
@@ -59,15 +56,14 @@ export function PlayTab() {
   );
 
   const session = usePlaySession({
-    log, projectId,
-    pdbId: protein.pdbId,
-    proteinName: protein.name,
-    geneName: protein.gene,
+    log, projectId, pdbId: protein.pdbId,
+    proteinName: protein.name, geneName: protein.gene,
   });
 
   const consumedRef = useRef(false);
   const [source, setSource] = useState<PDBSource | null>(null);
   const [ai, setAi] = useState<AIState>({ kind: 'checking' });
+  const [atoms, setAtoms] = useState<CAAtom[]>([]);
 
   const [tool, setTool] = useState<PlaygroundTool>('select');
   const [segments, setSegments] = useState<Segment[] | null>(null);
@@ -77,16 +73,26 @@ export function PlayTab() {
   const [measureDistance, setMeasureDistance] = useState<number | null>(null);
   const [cutCount, setCutCount] = useState(0);
 
-  // Multi-ligand
   const [ligands, setLigands] = useState<PlacedLigand[]>([]);
   const [pendingProteinAtom, setPendingProteinAtom] = useState<number | null>(null);
   const [pendingLigandInstance, setPendingLigandInstance] = useState<string | null>(null);
   const [highlightedLigandAtom, setHighlightedLigandAtom] = useState<number | null>(null);
   const [binding, setBinding] = useState<BindingInfo | null>(null);
+  const [docking, setDocking] = useState(false);
 
   const atomCoordsRef = useRef<Map<number, { x: number; y: number; z: number }>>(new Map());
-  const pickedRef = useRef<PickedResidue | null>(null);
   const lastLoggedProteinRef = useRef<string>('');
+
+  useEffect(() => {
+    let cancelled = false;
+    loadPDB(protein.pdbId)
+      .then(({ text }) => {
+        if (cancelled) return;
+        setAtoms(centerAtoms(parsePDBCA(text)));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [protein.pdbId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,9 +105,6 @@ export function PlayTab() {
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => { pickedRef.current = session.picked; }, [session.picked]);
-
-  // Log protein changes so replay can restore them.
   useEffect(() => {
     if (lastLoggedProteinRef.current === protein.id) return;
     lastLoggedProteinRef.current = protein.id;
@@ -118,9 +121,7 @@ export function PlayTab() {
     consumedRef.current = true;
     const payload = pendingSendToPlay;
     clearPendingSendToPlay();
-    void session.bridgeIn(payload.variant, payload.molecule).then(() => {
-      refreshActionCount();
-    });
+    void session.bridgeIn(payload.variant, payload.molecule).then(refreshActionCount);
   }, [pendingSendToPlay, clearPendingSendToPlay, session, refreshActionCount]);
 
   const handlePickProtein = (p: ProteinEntry) => {
@@ -187,8 +188,7 @@ export function PlayTab() {
   };
 
   const handleAddLigand = (entry: LigandEntry) => {
-    const existing = ligands.length;
-    const offset = 40 + existing * 18;
+    const offset = 40 + ligands.length * 18;
     const instanceId = nextLigandInstanceId();
     const position: [number, number, number] = [offset, 0, 0];
     setLigands((prev) => [...prev, { instanceId, entry, position }]);
@@ -204,8 +204,7 @@ export function PlayTab() {
     setLigands((prev) => prev.filter((l) => l.instanceId !== instanceId));
     void log.append({
       projectId, mode: 'play', actor: 'user', type: 'play.remove_ligand',
-      payload: { instanceId },
-      timestamp: new Date().toISOString(),
+      payload: { instanceId }, timestamp: new Date().toISOString(),
     }).then(refreshActionCount);
   };
 
@@ -221,79 +220,86 @@ export function PlayTab() {
     }).then(refreshActionCount);
   };
 
-  const handleLigandAtomClick = async (instanceId: string, atomIndex: number) => {
-    const placed = ligands.find((l) => l.instanceId === instanceId);
+  const handleDockNow = async () => {
+    if (pendingProteinAtom === null || !pendingLigandInstance) return;
+    const placed = ligands.find((l) => l.instanceId === pendingLigandInstance);
     if (!placed) return;
-    setHighlightedLigandAtom(atomIndex);
-    setPendingLigandInstance(instanceId);
-
-    if (tool !== 'bind' || pendingProteinAtom === null) return;
     const proteinAtom = atomCoordsRef.current.get(pendingProteinAtom);
-    const ligandAtom = placed.entry.atoms[atomIndex];
-    if (!proteinAtom || !ligandAtom) return;
+    if (!proteinAtom) return;
 
-    const lx = ligandAtom.x + placed.position[0];
-    const ly = ligandAtom.y + placed.position[1];
-    const lz = ligandAtom.z + placed.position[2];
-    const distance = Math.hypot(proteinAtom.x - lx, proteinAtom.y - ly, proteinAtom.z - lz);
+    setDocking(true);
+    try {
+      const ligandPoint = { x: placed.position[0], y: placed.position[1], z: placed.position[2] };
+      const sidecarResult = await dockWithSidecar({
+        pdbId: protein.pdbId,
+        ligandId: placed.entry.id,
+        ligandSmiles: placed.entry.smiles,
+        center: proteinAtom,
+        boxSize: 22,
+        ligandPoint,
+      });
 
-    // Try sidecar; fall back to local geometric stub.
-    const sidecarResult = await dockWithSidecar({
-      pdbId: protein.pdbId,
-      proteinAtomIndex: pendingProteinAtom,
-      ligandId: placed.entry.id,
-      ligandAtomIndex: atomIndex,
-      ligandX: lx, ligandY: ly, ligandZ: lz,
-      proteinX: proteinAtom.x, proteinY: proteinAtom.y, proteinZ: proteinAtom.z,
-    });
+      let result: DockResult;
+      if (sidecarResult) {
+        result = sidecarResult;
+      } else {
+        const distance = Math.hypot(
+          proteinAtom.x - ligandPoint.x,
+          proteinAtom.y - ligandPoint.y,
+          proteinAtom.z - ligandPoint.z,
+        );
+        result = localGeometricDock(distance);
+      }
 
-    const result = sidecarResult ?? localGeometricDock(distance);
-
-    const info: BindingInfo = {
-      instanceId,
-      ligandName: placed.entry.name,
-      ligandAtomIndex: atomIndex,
-      proteinAtomIndex: pendingProteinAtom,
-      distance: result.distanceAngstrom,
-      kdNm: result.estimatedKdNm,
-      method: result.method,
-      notes: result.notes,
-    };
-    setBinding(info);
-    setPendingProteinAtom(null);
-
-    await log.append({
-      projectId, mode: 'play', actor: 'user', type: 'play.bind',
-      payload: { instanceId, ligandId: placed.entry.id, atomIndex, info },
-      timestamp: new Date().toISOString(),
-    });
-
-    const variant = session.variant;
-    const prediction = session.prediction;
-    if (variant && prediction) {
-      const cosci = getCoScientist();
-      const bindingCtx = {
+      const info: BindingInfo = {
+        instanceId: placed.instanceId,
         ligandName: placed.entry.name,
-        ligandFormula: placed.entry.formula,
-        distanceAngstrom: result.distanceAngstrom,
-        estimatedKdNm: result.estimatedKdNm,
+        ligandAtomIndex: 0,
+        proteinAtomIndex: pendingProteinAtom,
+        result,
       };
-      const obs = await cosci.observe({
-        projectId, molecule: session.molecule, variant,
-        predictions: [prediction], binding: bindingCtx,
-      });
-      const hyp = await cosci.hypothesize({
-        projectId, molecule: session.molecule, variant,
-        predictions: [prediction], binding: bindingCtx,
-      });
+      setBinding(info);
+
       await log.append({
-        projectId, mode: 'play', actor: 'ai', type: 'ai.hypothesis.generate',
-        payload: { hypothesis: hyp, observation: obs, binding: info },
+        projectId, mode: 'play', actor: 'user', type: 'play.bind',
+        payload: { instanceId: placed.instanceId, ligandId: placed.entry.id, info },
         timestamp: new Date().toISOString(),
       });
-      session.setBindingResult(obs, hyp);
+
+      const variant = session.variant;
+      const prediction = session.prediction;
+      if (variant && prediction) {
+        const cosci = getCoScientist();
+        const bindingCtx = {
+          ligandName: placed.entry.name,
+          ligandFormula: placed.entry.formula,
+          distanceAngstrom: result.distanceAngstrom ?? 0,
+          estimatedKdNm: result.estimatedKdNm,
+        };
+        const obs = await cosci.observe({
+          projectId, molecule: session.molecule, variant,
+          predictions: [prediction], binding: bindingCtx,
+        });
+        const hyp = await cosci.hypothesize({
+          projectId, molecule: session.molecule, variant,
+          predictions: [prediction], binding: bindingCtx,
+        });
+        await log.append({
+          projectId, mode: 'play', actor: 'ai', type: 'ai.hypothesis.generate',
+          payload: { hypothesis: hyp, observation: obs, binding: info },
+          timestamp: new Date().toISOString(),
+        });
+        session.setBindingResult(obs, hyp);
+      }
+      refreshActionCount();
+    } finally {
+      setDocking(false);
     }
-    refreshActionCount();
+  };
+
+  const handleLigandAtomClick = (instanceId: string, atomIndex: number) => {
+    setPendingLigandInstance(instanceId);
+    setHighlightedLigandAtom(atomIndex);
   };
 
   const handleCut = (atomIndex: number) => {
@@ -302,8 +308,7 @@ export function PlayTab() {
       setCutCount((c) => c + 1);
       void log.append({
         projectId, mode: 'play', actor: 'user', type: 'play.cut',
-        payload: { atomIndex },
-        timestamp: new Date().toISOString(),
+        payload: { atomIndex }, timestamp: new Date().toISOString(),
       }).then(refreshActionCount);
       return cutAt(current, atomIndex);
     });
@@ -319,8 +324,177 @@ export function PlayTab() {
     setHighlightedLigandAtom(null);
   };
 
+  const handleSequenceClick = (index: number) => {
+    const a = atoms[index];
+    if (!a) return;
+    handlePickResidue({
+      index, residueNumber: a.residueNumber,
+      residueOneLetter: a.residueOneLetter,
+      atom: { x: a.x, y: a.y, z: a.z },
+    });
+  };
+
   const aiName = getCoScientist().name;
-  const registered = listCoScientists().map((c) => c.name);
+
+  const inputTab = (
+    <>
+      <Section title="Protein library" count={15} defaultOpen>
+        <ProteinLibraryPanel currentId={proteinId} onPick={handlePickProtein} />
+      </Section>
+      <Section title="Ligand shelf" count={5} defaultOpen>
+        <LigandShelf activeId={null} onPick={handleAddLigand} />
+      </Section>
+      {ligands.length > 0 && (
+        <Section title="Placed" count={ligands.length} defaultOpen>
+          <div className="placed-list">
+            {ligands.map((l) => (
+              <div key={l.instanceId} className="placed-item">
+                <span className="placed-name">{l.entry.name}</span>
+                <span className="placed-pos mono">
+                  [{l.position[0].toFixed(0)},{l.position[1].toFixed(0)},{l.position[2].toFixed(0)}]
+                </span>
+                <button className="placed-remove" onClick={() => handleRemoveLigand(l.instanceId)}>x</button>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+    </>
+  );
+
+  const inspectTab = (
+    <>
+      <Section title="Active tool" defaultOpen>
+        <div className="kv">
+          <span className="kv-key">tool</span>
+          <span className="kv-val mono">{tool}</span>
+        </div>
+        <div className="hint-text">
+          {tool === 'select' && 'Click a residue to pick it.'}
+          {tool === 'cut' && 'Click a residue to split the chain.'}
+          {tool === 'attach' && 'Click two residues to merge.'}
+          {tool === 'measure' && 'Click two residues to measure.'}
+          {tool === 'bind' && 'Click a protein residue, then a ligand to dock.'}
+        </div>
+      </Section>
+
+      {session.picked && (
+        <Section title="Selected residue" defaultOpen>
+          <SequenceViewer
+            atoms={atoms}
+            pickedIndex={session.picked.index >= 0 ? session.picked.index : null}
+            mutatedResidueNumber={session.variant?.position ?? null}
+            onResidueClick={handleSequenceClick}
+          />
+          <ResiduePanel
+            residue={session.picked}
+            disabled={session.status === 'predicting'}
+            onMutate={(aa) => { void session.mutate(aa).then(refreshActionCount); }}
+          />
+        </Section>
+      )}
+
+      {session.variant && (
+        <Section title="Mutation" defaultOpen>
+          <MutationPanel variant={session.variant} prediction={session.prediction} />
+        </Section>
+      )}
+
+      {tool === 'bind' && (
+        <Section title="Docking" defaultOpen>
+          <div className="kv">
+            <span className="kv-key">protein atom</span>
+            <span className="kv-val mono">
+              {pendingProteinAtom !== null ? `#${pendingProteinAtom}` : '-'}
+            </span>
+          </div>
+          <div className="kv">
+            <span className="kv-key">ligand</span>
+            <span className="kv-val mono">
+              {pendingLigandInstance
+                ? ligands.find((l) => l.instanceId === pendingLigandInstance)?.entry.name ?? '-'
+                : '-'}
+            </span>
+          </div>
+          <button
+            className="primary"
+            disabled={pendingProteinAtom === null || !pendingLigandInstance || docking}
+            onClick={handleDockNow}
+          >
+            {docking ? 'Docking...' : 'Run docking'}
+          </button>
+        </Section>
+      )}
+
+      {binding && (
+        <Section title="Docking result" defaultOpen accent="#88ff88">
+          <div className="kv">
+            <span className="kv-key">ligand</span>
+            <span className="kv-val mono">{binding.ligandName}</span>
+          </div>
+          {binding.result.bindingEnergyKcal !== null && (
+            <div className="kv">
+              <span className="kv-key">dG</span>
+              <span className="kv-val mono bad">{binding.result.bindingEnergyKcal.toFixed(2)} kcal/mol</span>
+            </div>
+          )}
+          {binding.result.distanceAngstrom !== null && (
+            <div className="kv">
+              <span className="kv-key">distance</span>
+              <span className="kv-val mono">{binding.result.distanceAngstrom.toFixed(2)} A</span>
+            </div>
+          )}
+          <div className="kv">
+            <span className="kv-key">Kd</span>
+            <span className="kv-val mono good">
+              {binding.result.estimatedKdNm < 1000
+                ? `${binding.result.estimatedKdNm.toFixed(1)} nM`
+                : `${(binding.result.estimatedKdNm / 1000).toFixed(2)} uM`}
+            </span>
+          </div>
+          <div className="kv">
+            <span className="kv-key">method</span>
+            <span className="kv-val mono small">{binding.result.method}</span>
+          </div>
+          <div className="stub-note">{binding.result.notes}</div>
+        </Section>
+      )}
+
+      {measureDistance !== null && (
+        <Section title="Measurement" defaultOpen accent="#ffaa00">
+          <div className="kv">
+            <span className="kv-key">distance</span>
+            <span className="kv-val mono">{measureDistance.toFixed(2)} A</span>
+          </div>
+        </Section>
+      )}
+    </>
+  );
+
+  const aiTab = (
+    <>
+      <Section title="Co-scientist" defaultOpen>
+        <div className="kv">
+          <span className="kv-key">active</span>
+          <span className="kv-val mono small">{aiName}</span>
+        </div>
+        {ai.kind === 'checking' && <div className="hint-text">checking for Ollama...</div>}
+        {ai.kind === 'stub' && <div className="hint-text">Ollama not detected. Using stub.</div>}
+        {ai.kind === 'ollama' && <div className="hint-text">Local LLM: {ai.model}</div>}
+        <div className="hint-text mono small">
+          registered: {listCoScientists().map((c) => c.name).join(', ')}
+        </div>
+      </Section>
+
+      <Section title="Observation" defaultOpen>
+        {session.observation ? (
+          <AICard observation={session.observation} hypothesis={session.hypothesis} />
+        ) : (
+          <div className="hint-text">Mutate a residue to generate a hypothesis.</div>
+        )}
+      </Section>
+    </>
+  );
 
   return (
     <div className="play-layout">
@@ -357,14 +531,15 @@ export function PlayTab() {
         />
         <div className="scene-overlay">
           <strong>Play</strong> · {protein.pdbId} · {protein.gene} ·{' '}
-          {source === 'local' ? 'local cache' : source === 'rcsb' ? 'RCSB (online)' : '…'}
+          {source === 'local' ? 'local cache' : source === 'rcsb' ? 'RCSB (online)' : '...'}
           {segments && segments.length > 1 && (
             <> · <span style={{ color: '#ffaa44' }}>{segments.length} fragments · {cutCount} cuts</span></>
           )}
           {ligands.length > 0 && (
-            <> · <span style={{ color: '#66ff88' }}>{ligands.length} ligand{ligands.length === 1 ? '' : 's'} (drag to move)</span></>
+            <> · <span style={{ color: '#66ff88' }}>{ligands.length} ligand{ligands.length === 1 ? '' : 's'}</span></>
           )}
         </div>
+        <SecondaryStructureLegend />
         <ToolBelt
           tool={tool}
           onToolChange={handleToolChange}
@@ -375,95 +550,7 @@ export function PlayTab() {
         />
       </div>
 
-      <aside className="play-sidebar">
-        <ProteinLibraryPanel currentId={proteinId} onPick={handlePickProtein} />
-        <LigandShelf activeId={null} onPick={handleAddLigand} />
-
-        {ligands.length > 0 && (
-          <div className="panel">
-            <div className="panel-label">Placed ligands</div>
-            <div className="placed-list">
-              {ligands.map((l) => (
-                <div key={l.instanceId} className="placed-item">
-                  <span className="placed-name">{l.entry.name}</span>
-                  <span className="placed-pos mono">
-                    [{l.position[0].toFixed(0)}, {l.position[1].toFixed(0)}, {l.position[2].toFixed(0)}]
-                  </span>
-                  <button className="placed-remove" onClick={() => handleRemoveLigand(l.instanceId)}>×</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="panel">
-          <div className="panel-label">Loaded</div>
-          <div className="panel-value">{protein.gene}</div>
-          <div className="panel-hint mono">{protein.pdbId} · {atomCount} residues</div>
-        </div>
-
-        <div className="panel">
-          <div className="panel-label">Active tool</div>
-          <div className="panel-value mono">{tool}</div>
-          <div className="panel-hint">
-            {tool === 'select' && 'Click a residue to pick it, then mutate.'}
-            {tool === 'cut' && 'Click a residue to split the chain there.'}
-            {tool === 'attach' && 'Click two residues in different fragments to merge.'}
-            {tool === 'measure' && 'Click two residues to see the distance.'}
-            {tool === 'bind' && (ligands.length > 0
-              ? 'Click a protein residue, then a ligand atom.'
-              : 'Add a ligand from the shelf first.')}
-          </div>
-        </div>
-
-        {binding && (
-          <div className="panel binding-panel">
-            <div className="panel-label">Binding estimate</div>
-            <div className="binding-row">
-              <span>Ligand</span><span className="mono">{binding.ligandName}</span>
-            </div>
-            <div className="binding-row">
-              <span>Distance</span><span className="mono">{binding.distance.toFixed(2)} Å</span>
-            </div>
-            <div className="binding-row">
-              <span>Estimated Kd</span>
-              <span className="mono">
-                {binding.kdNm < 1000 ? `${binding.kdNm.toFixed(1)} nM` : `${(binding.kdNm / 1000).toFixed(2)} µM`}
-              </span>
-            </div>
-            <div className="binding-row">
-              <span>Method</span><span className="mono" style={{ fontSize: 10 }}>{binding.method}</span>
-            </div>
-            <div className="stub-note">{binding.notes}</div>
-            <button className="zoom-btn" onClick={() => setBinding(null)}>Clear</button>
-          </div>
-        )}
-
-        <div className="panel">
-          <div className="panel-label">AI co-scientist</div>
-          <div className="panel-value mono">{aiName}</div>
-          {ai.kind === 'checking' && <div className="panel-hint">checking for Ollama…</div>}
-          {ai.kind === 'stub' && <div className="panel-hint">Ollama not detected. Using stub.</div>}
-          {ai.kind === 'ollama' && <div className="panel-hint">Local LLM: <strong>{ai.model}</strong>.</div>}
-          <div className="panel-hint mono">registered: {registered.join(', ')}</div>
-        </div>
-
-        {session.picked && tool === 'select' && (
-          <ResiduePanel
-            residue={session.picked}
-            disabled={session.status === 'predicting'}
-            onMutate={(aa) => { void session.mutate(aa).then(refreshActionCount); }}
-          />
-        )}
-
-        {session.variant && (
-          <MutationPanel variant={session.variant} prediction={session.prediction} />
-        )}
-
-        {session.observation && (
-          <AICard observation={session.observation} hypothesis={session.hypothesis} />
-        )}
-      </aside>
+      <Inspector input={inputTab} inspect={inspectTab} ai={aiTab} />
     </div>
   );
 }

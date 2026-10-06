@@ -1,34 +1,15 @@
-/**
- * A small library of ligands.
- *
- * Each entry has hand-placed 3D coordinates. For water and ions these are
- * exact. For small molecules (ATP, caffeine) they are APPROXIMATE shapes
- * meant to be visually recognizable, not chemically accurate. The UI
- * labels these as "simplified".
- *
- * Element colors follow CPK convention in the renderer.
- */
-
 export type Element =
   | 'C' | 'N' | 'O' | 'S' | 'P' | 'H'
   | 'F' | 'Cl' | 'Br' | 'Zn' | 'Mg';
 
-export interface LigandAtom {
-  element: Element;
-  x: number;
-  y: number;
-  z: number;
-}
-
-export interface LigandBond {
-  a: number;
-  b: number;
-}
+export interface LigandAtom { element: Element; x: number; y: number; z: number; }
+export interface LigandBond { a: number; b: number; }
 
 export interface LigandEntry {
   id: string;
   name: string;
   formula: string;
+  smiles: string;
   category: 'ion' | 'cofactor' | 'drug' | 'fragment';
   target: string;
   notes: string;
@@ -42,6 +23,7 @@ export const LIGAND_LIBRARY: LigandEntry[] = [
     id: 'water',
     name: 'Water',
     formula: 'H2O',
+    smiles: 'O',
     category: 'fragment',
     target: 'universal',
     notes: 'Solvent. Used to probe pockets.',
@@ -57,6 +39,7 @@ export const LIGAND_LIBRARY: LigandEntry[] = [
     id: 'mg2',
     name: 'Magnesium ion',
     formula: 'Mg2+',
+    smiles: '[Mg+2]',
     category: 'ion',
     target: 'kinases, ATP-binding sites',
     notes: 'Essential cofactor for phosphoryl transfer.',
@@ -68,6 +51,7 @@ export const LIGAND_LIBRARY: LigandEntry[] = [
     id: 'zn2',
     name: 'Zinc ion',
     formula: 'Zn2+',
+    smiles: '[Zn+2]',
     category: 'ion',
     target: 'zinc fingers, metalloenzymes',
     notes: 'Structural and catalytic. Tetrahedral coordination.',
@@ -79,23 +63,21 @@ export const LIGAND_LIBRARY: LigandEntry[] = [
     id: 'atp',
     name: 'ATP',
     formula: 'C10H16N5O13P3',
+    smiles: 'C1=NC(=C2C(=N1)N(C=N2)C3C(C(C(O3)COP(=O)(O)OP(=O)(O)OP(=O)(O)O)O)O)N',
     category: 'cofactor',
     target: 'kinases',
-    notes: 'Adenosine triphosphate. Shape is simplified, not real geometry.',
+    notes: 'Adenosine triphosphate. Shape is simplified in the viewer.',
     approximate: true,
     atoms: [
-      // Purine ring
       { element: 'N', x: -1.4, y: 0.0, z: 0 },
       { element: 'C', x: -0.7, y: 1.2, z: 0 },
       { element: 'N', x: 0.7, y: 1.2, z: 0 },
       { element: 'C', x: 1.4, y: 0.0, z: 0 },
       { element: 'C', x: 0.7, y: -1.2, z: 0 },
       { element: 'C', x: -0.7, y: -1.2, z: 0 },
-      // Ribose
       { element: 'C', x: -2.4, y: -1.2, z: 0.4 },
       { element: 'C', x: -3.4, y: 0.0, z: 0.4 },
       { element: 'O', x: -4.4, y: -0.5, z: 0.4 },
-      // Phosphate tail
       { element: 'P', x: -5.4, y: 0.3, z: 0.4 },
       { element: 'P', x: -6.4, y: 0.9, z: 0.4 },
       { element: 'P', x: -7.4, y: 1.5, z: 0.4 },
@@ -111,9 +93,10 @@ export const LIGAND_LIBRARY: LigandEntry[] = [
     id: 'caffeine',
     name: 'Caffeine',
     formula: 'C8H10N4O2',
+    smiles: 'CN1C=NC2=C1C(=O)N(C(=O)N2C)C',
     category: 'drug',
     target: 'adenosine receptor',
-    notes: 'Shape is simplified, not real geometry.',
+    notes: 'Shape is simplified in the viewer.',
     approximate: true,
     atoms: [
       { element: 'N', x: -1.4, y: 0.0, z: 0 },
@@ -141,17 +124,8 @@ export function getLigandById(id: string): LigandEntry | undefined {
 }
 
 export const ELEMENT_COLORS: Record<Element, number> = {
-  C: 0x555555,
-  N: 0x3050f8,
-  O: 0xff2020,
-  S: 0xffff30,
-  P: 0xff8000,
-  H: 0xf0f0f0,
-  F: 0x90e050,
-  Cl: 0x1ff01f,
-  Br: 0xa62929,
-  Zn: 0x7d80b0,
-  Mg: 0x8aff00,
+  C: 0x555555, N: 0x3050f8, O: 0xff2020, S: 0xffff30, P: 0xff8000, H: 0xf0f0f0,
+  F: 0x90e050, Cl: 0x1ff01f, Br: 0xa62929, Zn: 0x7d80b0, Mg: 0x8aff00,
 };
 
 export const ELEMENT_RADII: Record<Element, number> = {
