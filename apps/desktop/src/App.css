@@ -2183,3 +2183,95 @@ button.send-to-play:hover {
 }
 .tool-banner.ok .tool-banner-msg { color: #a8f0b8; }
 .tool-banner.err .tool-banner-msg { color: #f0a8a8; }
+
+/* ============================================================
+   Live inspect overlay (top-left of the 3D viewport)
+   ============================================================ */
+
+.live-inspect {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  min-width: 150px;
+  background: rgba(8, 10, 14, 0.92);
+  border: 1px solid #1a1f24;
+  border-radius: 8px;
+  padding: 8px 10px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  pointer-events: none;
+  user-select: none;
+}
+
+.live-inspect-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #141a1f;
+}
+
+.live-inspect-title {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: #556;
+}
+
+.live-inspect-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: #0a0f14;
+  border: 1px solid #1a1f24;
+  font-size: 10px;
+  font-family: ui-monospace, Menlo, monospace;
+  color: transparent;
+  transition: color 220ms, background 220ms, border-color 220ms;
+}
+.live-inspect-key.active {
+  color: #66ccff;
+  background: #0f1a22;
+  border-color: #2a4a5a;
+  box-shadow: 0 0 12px rgba(102, 204, 255, 0.25);
+}
+
+.live-inspect-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.live-inspect-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: 11px;
+}
+
+.live-inspect-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1.1px;
+  color: #556;
+}
+
+.live-inspect-value {
+  color: #c8d4dc;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 110px;
+}
+.live-inspect-value.accent { color: #66ccff; }

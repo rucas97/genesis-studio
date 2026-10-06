@@ -4,6 +4,7 @@ import { usePlaySession, type PickedResidue } from '../state/usePlaySession';
 import { ResiduePanel } from '../panels/ResiduePanel';
 import { MutationPanel } from '../panels/MutationPanel';
 import { AICard } from '../panels/AICard';
+import { LiveInspect } from '../panels/LiveInspect';
 import { ProteinLibraryPanel } from '../panels/ProteinLibraryPanel';
 import { LigandShelf } from '../playground/LigandShelf';
 import { ToolBelt } from '../playground/ToolBelt';
@@ -80,6 +81,8 @@ export function PlayTab() {
   const [binding, setBinding] = useState<BindingInfo | null>(null);
   const [docking, setDocking] = useState(false);
   const [selectedLigandInstance, setSelectedLigandInstance] = useState<string | null>(null);
+  const [lastKey, setLastKey] = useState<string | null>(null);
+  const keyClearTimerRef = useRef<number | null>(null);
   const [anchor, setAnchor] = useState<{
     atomIndex: number;
     position: [number, number, number];
@@ -420,6 +423,38 @@ export function PlayTab() {
     return () => window.removeEventListener('keydown', onKey);
   }, [session]);
 
+  // Live keypress indicator for the inspect overlay.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag && ['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
+
+      let display: string | null = null;
+      if (e.key.length === 1) display = e.key.toUpperCase();
+      else if (e.key === 'Escape') display = 'ESC';
+      else if (e.key === 'Delete') display = 'DEL';
+      else if (e.key === 'Backspace') display = '\u232B';
+
+      if (!display) return;
+
+      setLastKey(display);
+      if (keyClearTimerRef.current !== null) {
+        window.clearTimeout(keyClearTimerRef.current);
+      }
+      keyClearTimerRef.current = window.setTimeout(() => {
+        setLastKey(null);
+        keyClearTimerRef.current = null;
+      }, 1400);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      if (keyClearTimerRef.current !== null) {
+        window.clearTimeout(keyClearTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleSequenceClick = (index: number) => {
     const a = atoms[index];
     if (!a) return;
@@ -660,6 +695,20 @@ export function PlayTab() {
             <> · <span style={{ color: '#66ff88' }}>{ligands.length} ligand{ligands.length === 1 ? '' : 's'}</span></>
           )}
         </div>
+        <LiveInspect
+          tool={tool}
+          residueLabel={
+            session.picked
+              ? `${session.picked.residueOneLetter}${session.picked.residueNumber}`
+              : null
+          }
+          ligandName={
+            selectedLigandInstance
+              ? ligands.find((l) => l.instanceId === selectedLigandInstance)?.entry.name ?? null
+              : null
+          }
+          lastKey={lastKey}
+        />
         <SecondaryStructureLegend />
         {tool !== 'select' && (
           <div className={`tool-banner ${feedback?.kind ?? 'info'}`}>
