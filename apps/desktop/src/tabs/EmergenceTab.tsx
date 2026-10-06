@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { CellScene, type EmergencePhase } from '../emergence/CellScene';
 
-const PHASES: Array<{ phase: EmergencePhase; label: string; description: string; durationMs: number }> = [
-  { phase: 'year0',    label: 'Year 0',    description: 'Baseline cell state. Normal proliferation.', durationMs: 3000 },
-  { phase: 'year5',    label: 'Year 5',    description: 'Increased proliferative signaling detected.', durationMs: 3000 },
-  { phase: 'year10',   label: 'Year 10',   description: 'Tumor mass forming. Neighboring cells recruited.', durationMs: 3500 },
-  { phase: 'critical', label: 'Year 14',   description: 'Critical transition detected. Immune escape.', durationMs: 3500 },
+const PHASES: Array<{
+  phase: EmergencePhase;
+  label: string;
+  description: string;
+  durationMs: number;
+}> = [
+  { phase: 'year0',    label: 'Year 0',  description: 'Baseline cell. Normal proliferation.', durationMs: 3000 },
+  { phase: 'year5',    label: 'Year 5',  description: 'Increased proliferative signaling detected.', durationMs: 3000 },
+  { phase: 'year10',   label: 'Year 10', description: 'Tumor mass forming. Neighboring cells recruited.', durationMs: 3500 },
+  { phase: 'critical', label: 'Year 14', description: 'Critical transition detected. Immune escape.', durationMs: 3500 },
 ];
 
 export function EmergenceTab() {
@@ -27,10 +32,9 @@ export function EmergenceTab() {
     setLog([]);
     setRunning(true);
     setPhase('year0');
-
-    let elapsed = 0;
     setLog([{ year: 'Year 0', text: 'Simulation started. Baseline tissue state.' }]);
 
+    let elapsed = 0;
     for (const p of PHASES) {
       elapsed += p.durationMs;
       const t = window.setTimeout(() => {
@@ -40,9 +44,7 @@ export function EmergenceTab() {
       timersRef.current.push(t);
     }
 
-    const endTimer = window.setTimeout(() => {
-      setRunning(false);
-    }, elapsed + 200);
+    const endTimer = window.setTimeout(() => setRunning(false), elapsed + 200);
     timersRef.current.push(endTimer);
   };
 
@@ -72,8 +74,8 @@ export function EmergenceTab() {
         <div className="panel">
           <div className="panel-label">Emergence Engine</div>
           <p className="panel-hint">
-            This mode is under construction. The scene shows a stylized cell
-            and a scripted timeline. No real simulation runs.
+            This mode is under construction. The scene shows a stylized
+            cell with a scripted timeline. No real simulation runs.
           </p>
           <p className="panel-hint">
             The real engine will perform multi-scale, long-timescale
@@ -99,11 +101,7 @@ export function EmergenceTab() {
 
         <div className="panel">
           <div className="emergence-controls">
-            <button
-              className="primary"
-              disabled={running}
-              onClick={handleRun}
-            >
+            <button className="primary" disabled={running} onClick={handleRun}>
               {running ? 'Simulating…' : '▶  Run simulation'}
             </button>
             <button

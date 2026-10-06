@@ -26,7 +26,7 @@ function Shell() {
         <nav className="tabs">
           <TabButton active={activeTab === 'play'} onClick={() => setActiveTab('play')}>Play</TabButton>
           <TabButton active={activeTab === 'flow'} onClick={() => setActiveTab('flow')}>Flow</TabButton>
-          <TabButton active={activeTab === 'emergence'} disabled onClick={() => setActiveTab('emergence')}>Emergence</TabButton>
+          <TabButton active={activeTab === 'emergence'} onClick={() => setActiveTab('emergence')}>Emergence</TabButton>
         </nav>
         <div className="topbar-right">
           <button className="log-toggle" onClick={() => setLogOpen((v) => !v)}>
