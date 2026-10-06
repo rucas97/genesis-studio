@@ -18,12 +18,12 @@ export interface ProteinEntry {
 export const PROTEIN_LIBRARY: ProteinEntry[] = [
   {
     id: 'egfr',
-    pdbId: '4HJO',
+    pdbId: '2ITN',
     gene: 'EGFR',
     name: 'Epidermal growth factor receptor',
     category: 'kinase',
     disease: 'Non-small cell lung cancer',
-    why: 'Canonical kinase target. L858R, T790M, C797S drive resistance.',
+    why: 'Canonical kinase target. L858R, T790M, C797S drive resistance. 2ITN has wildtype L858.',
   },
   {
     id: 'kras',
