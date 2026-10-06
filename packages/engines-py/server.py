@@ -199,13 +199,20 @@ class VinaDockingRunner:
                    "--center_x", str(center["x"]), "--center_y", str(center["y"]),
                    "--center_z", str(center["z"]),
                    "--size_x", str(box_size), "--size_y", str(box_size), "--size_z", str(box_size),
-                   "--out", str(vina_out), "--log", str(vina_log)]
+                   "--out", str(vina_out)]
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
             if r.returncode != 0:
-                raise RuntimeError(f"Vina failed: {r.stderr}")
-            energy = _parse_vina_energy(vina_log.read_text())
+                raise RuntimeError(f"Vina failed: {r.stderr or r.stdout}")
+            # Vina 1.2.7 prints results to stdout, not a log file.
+            # Note: 0.0 is a valid energy, so check for None explicitly.
+            energy = _parse_vina_energy(r.stdout)
             if energy is None:
-                raise RuntimeError("Could not parse Vina output")
+                energy = _parse_vina_energy(r.stderr)
+            if energy is None:
+                raise RuntimeError(
+                    f"Could not parse Vina output.\n"
+                    f"STDOUT:\n{r.stdout[-1000:]}\nSTDERR:\n{r.stderr[-1000:]}"
+                )
             kd_nm = _energy_to_kd_nm(energy)
             return {"distanceAngstrom": None, "estimatedKdNm": round(kd_nm, 4),
                     "bindingEnergyKcal": round(energy, 2),
@@ -214,15 +221,25 @@ class VinaDockingRunner:
 
 
 def _parse_vina_energy(log):
+    """Vina 1.2.7 output looks like:
+
+    mode |   affinity | dist from best mode
+         | (kcal/mol) | rmsd l.b.| rmsd u.b.
+    -----+------------+----------+----------
+       1       -8.4          0          0
+       2       -7.9      1.234      1.876
+    """
     for line in log.splitlines():
-        line = line.strip()
-        if line.startswith("1 "):
-            parts = line.split()
-            if len(parts) >= 2:
-                try:
-                    return float(parts[1])
-                except ValueError:
-                    continue
+        stripped = line.strip()
+        if not stripped:
+            continue
+        parts = stripped.split()
+        # First column is the mode number; expect it to be "1"
+        if parts and parts[0] == "1" and len(parts) >= 2:
+            try:
+                return float(parts[1])
+            except ValueError:
+                continue
     return None
 
 
