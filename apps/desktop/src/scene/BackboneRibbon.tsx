@@ -1,18 +1,14 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
+import type { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { CAAtom } from './pdbLoader';
 import { assignSecondaryStructure, type SecondaryStructure } from './secondaryStructure';
 
 const SS_COLORS: Record<SecondaryStructure, number> = {
-  helix: 0x5aa9ff,
-  sheet: 0xf0b64a,
-  coil:  0x6a7a92,
+  helix: 0x5aa9ff, sheet: 0xf0b64a, coil: 0x6a7a92,
 };
-// Thinner tubes so side chains are visible above the ribbon.
 const SS_RADII: Record<SecondaryStructure, number> = {
-  helix: 0.62,
-  sheet: 0.48,
-  coil:  0.22,
+  helix: 0.62, sheet: 0.48, coil: 0.22,
 };
 
 interface Run { ss: SecondaryStructure; start: number; end: number; }
@@ -33,11 +29,55 @@ function splitRuns(ss: SecondaryStructure[]): Run[] {
 export interface BackboneRibbonProps {
   atoms: CAAtom[];
   atomColors?: Map<number, number>;
+  onHoverAtom?: (index: number | null) => void;
+  onClickAtom?: (index: number) => void;
 }
 
-export function BackboneRibbon({ atoms, atomColors }: BackboneRibbonProps) {
+export function BackboneRibbon({
+  atoms, atomColors, onHoverAtom, onClickAtom,
+}: BackboneRibbonProps) {
   const ss = useMemo(() => assignSecondaryStructure(atoms), [atoms]);
   const runs = useMemo(() => splitRuns(ss), [ss]);
+  const lastHoverRef = useRef<number | null>(null);
+  const lastHoverTimeRef = useRef(0);
+
+  const nearestAtom = useCallback((point: THREE.Vector3): number | null => {
+    if (atoms.length === 0) return null;
+    let best = -1; let bestD = Infinity;
+    for (let i = 0; i < atoms.length; i++) {
+      const a = atoms[i];
+      const dx = a.x - point.x, dy = a.y - point.y, dz = a.z - point.z;
+      const d = dx*dx + dy*dy + dz*dz;
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best >= 0 ? best : null;
+  }, [atoms]);
+
+  const handleMove = useCallback((e: ThreeEvent<PointerEvent>) => {
+    if (!onHoverAtom) return;
+    const now = performance.now();
+    if (now - lastHoverTimeRef.current < 33) return;
+    lastHoverTimeRef.current = now;
+    e.stopPropagation();
+    const idx = nearestAtom(e.point);
+    if (idx !== lastHoverRef.current) {
+      lastHoverRef.current = idx;
+      onHoverAtom(idx);
+    }
+  }, [onHoverAtom, nearestAtom]);
+
+  const handleOut = useCallback(() => {
+    if (!onHoverAtom) return;
+    lastHoverRef.current = null;
+    onHoverAtom(null);
+  }, [onHoverAtom]);
+
+  const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
+    if (!onClickAtom) return;
+    e.stopPropagation();
+    const idx = nearestAtom(e.point);
+    if (idx !== null) onClickAtom(idx);
+  }, [onClickAtom, nearestAtom]);
 
   const tubes = useMemo(() => {
     return runs.map((run) => {
@@ -47,13 +87,11 @@ export function BackboneRibbon({ atoms, atomColors }: BackboneRibbonProps) {
         points.push(new THREE.Vector3(a.x, a.y, a.z));
       }
       if (points.length < 2) return null;
-
       const curve = new THREE.CatmullRomCurve3(points);
       const tubularSegments = Math.max(6, Math.floor(points.length * 2));
       const radius = SS_RADII[run.ss];
       const radialSegments = 8;
       const geometry = new THREE.TubeGeometry(curve, tubularSegments, radius, radialSegments, false);
-
       const vertCount = geometry.attributes.position.count;
       const colorAttr = new Float32Array(vertCount * 3);
       const baseColor = new THREE.Color(SS_COLORS[run.ss]);
@@ -68,19 +106,12 @@ export function BackboneRibbon({ atoms, atomColors }: BackboneRibbonProps) {
           const override = atomColors.get(atomIdx);
           if (override !== undefined) c = new THREE.Color(override);
         }
-        colorAttr[i * 3] = c.r;
-        colorAttr[i * 3 + 1] = c.g;
-        colorAttr[i * 3 + 2] = c.b;
+        colorAttr[i*3] = c.r; colorAttr[i*3+1] = c.g; colorAttr[i*3+2] = c.b;
       }
       geometry.setAttribute('color', new THREE.BufferAttribute(colorAttr, 3));
-
       const material = new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        roughness: 0.35,
-        metalness: 0.15,
-        envMapIntensity: 0.6,
+        vertexColors: true, roughness: 0.35, metalness: 0.15, envMapIntensity: 0.6,
       });
-
       return { geometry, material, key: `run-${run.start}-${run.end}` };
     }).filter(Boolean) as Array<{ geometry: THREE.TubeGeometry; material: THREE.MeshStandardMaterial; key: string }>;
   }, [runs, atoms, atomColors]);
@@ -88,7 +119,14 @@ export function BackboneRibbon({ atoms, atomColors }: BackboneRibbonProps) {
   return (
     <group>
       {tubes.map((t) => (
-        <mesh key={t.key} geometry={t.geometry} material={t.material} />
+        <mesh
+          key={t.key}
+          geometry={t.geometry}
+          material={t.material}
+          onPointerMove={handleMove}
+          onPointerOut={handleOut}
+          onClick={handleClick}
+        />
       ))}
     </group>
   );

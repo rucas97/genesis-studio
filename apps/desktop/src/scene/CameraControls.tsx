@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useRef, type MutableRefObject } from 'react';
+import { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
 export interface CameraControlsProps {
-  draggingRef: MutableRefObject<boolean>;
   onBackgroundClick?: () => void;
   autoRotate?: boolean;
   autoRotateSpeed?: number;
@@ -12,23 +11,27 @@ export interface CameraControlsProps {
   maxRadius?: number;
 }
 
-interface SphericalState {
-  theta: number;
-  phi: number;
-  radius: number;
-}
+interface SphericalState { theta: number; phi: number; radius: number; }
 
 interface CameraDragState {
-  x: number;
-  y: number;
+  startX: number;
+  startY: number;
+  lastX: number;
+  lastY: number;
   mode: 'orbit' | 'pan';
   moved: boolean;
 }
 
-const DRAG_THRESHOLD_PX = 4;
+const DRAG_THRESHOLD_PX = 3;
 
+/**
+ * Camera controller. Only the camera owns camera drag state.
+ *
+ * Ligands block camera drag by calling stopPropagation() on their R3F
+ * pointerdown handlers, so the background plane never sees the event.
+ * There is no shared "dragging" ref — that caused race conditions.
+ */
 export function CameraControls({
-  draggingRef,
   onBackgroundClick,
   autoRotate = true,
   autoRotateSpeed = 0.15,
@@ -38,24 +41,26 @@ export function CameraControls({
 }: CameraControlsProps) {
   const { camera, gl } = useThree();
 
-  const spherical = useRef<SphericalState>({
-    theta: Math.PI / 2,
-    phi: Math.PI / 2,
-    radius: 90,
+  const target = useRef<SphericalState>({
+    theta: Math.PI / 2, phi: Math.PI / 2, radius: 90,
   });
-  const target = useRef(new THREE.Vector3(0, 0, 0));
+  const current = useRef<SphericalState>({
+    theta: Math.PI / 2, phi: Math.PI / 2, radius: 90,
+  });
+
+  const lookAt = useRef(new THREE.Vector3(0, 0, 0));
+  const lookAtTarget = useRef(new THREE.Vector3(0, 0, 0));
 
   const cameraDrag = useRef<CameraDragState | null>(null);
-  const lastCameraDragMoved = useRef(false);
+  const lastDragMoved = useRef(false);
   const lastInteraction = useRef(performance.now());
 
-  // Wheel zoom and context menu — native listeners on the canvas.
-  // These do not conflict with mesh events.
+  // Wheel + context menu on the canvas
   useEffect(() => {
     const el = gl.domElement;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const s = spherical.current;
+      const s = target.current;
       const factor = Math.exp(e.deltaY * 0.0012);
       s.radius = Math.max(minRadius, Math.min(maxRadius, s.radius * factor));
       lastInteraction.current = performance.now();
@@ -69,53 +74,54 @@ export function CameraControls({
     };
   }, [gl, minRadius, maxRadius]);
 
-  // Move / up during a camera drag — window listeners.
+  // Window-level move/up during a camera drag
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
       const cd = cameraDrag.current;
       if (!cd) return;
 
-      const dx = e.clientX - cd.x;
-      const dy = e.clientY - cd.y;
-      cd.x = e.clientX;
-      cd.y = e.clientY;
+      const dx = e.clientX - cd.lastX;
+      const dy = e.clientY - cd.lastY;
+      cd.lastX = e.clientX;
+      cd.lastY = e.clientY;
 
       if (!cd.moved) {
-        if (Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD_PX) return;
+        const totalX = Math.abs(e.clientX - cd.startX);
+        const totalY = Math.abs(e.clientY - cd.startY);
+        if (totalX + totalY < DRAG_THRESHOLD_PX) return;
         cd.moved = true;
       }
 
       lastInteraction.current = performance.now();
 
       if (cd.mode === 'orbit') {
-        const s = spherical.current;
-        s.theta -= dx * 0.006;
-        s.phi -= dy * 0.006;
-        const eps = 0.01;
+        const s = target.current;
+        s.theta -= dx * 0.0055;   // mouse right -> scene spins right
+        s.phi   -= dy * 0.0055;   // mouse down  -> see top of object
+        const eps = 0.02;
         s.phi = Math.max(eps, Math.min(Math.PI - eps, s.phi));
       } else {
-        const s = spherical.current;
+        const s = target.current;
         const radius = s.radius;
         const camPos = new THREE.Vector3(
-          target.current.x + radius * Math.sin(s.phi) * Math.cos(s.theta),
-          target.current.y + radius * Math.cos(s.phi),
-          target.current.z + radius * Math.sin(s.phi) * Math.sin(s.theta)
+          lookAtTarget.current.x + radius * Math.sin(s.phi) * Math.cos(s.theta),
+          lookAtTarget.current.y + radius * Math.cos(s.phi),
+          lookAtTarget.current.z + radius * Math.sin(s.phi) * Math.sin(s.theta)
         );
         const forward = new THREE.Vector3()
-          .subVectors(target.current, camPos)
-          .normalize();
+          .subVectors(lookAtTarget.current, camPos).normalize();
         const worldUp = new THREE.Vector3(0, 1, 0);
         const right = new THREE.Vector3().crossVectors(forward, worldUp).normalize();
         const up = new THREE.Vector3().crossVectors(right, forward).normalize();
         const scale = radius * 0.0016;
-        target.current.addScaledVector(right, -dx * scale);
-        target.current.addScaledVector(up, dy * scale);
+        lookAtTarget.current.addScaledVector(right, -dx * scale);
+        lookAtTarget.current.addScaledVector(up, dy * scale);
       }
     };
 
     const onUp = () => {
       const cd = cameraDrag.current;
-      lastCameraDragMoved.current = cd?.moved ?? false;
+      lastDragMoved.current = cd?.moved ?? false;
       cameraDrag.current = null;
     };
 
@@ -129,70 +135,74 @@ export function CameraControls({
     };
   }, []);
 
-  // R3F event handler for the background plane.
-  // R3F only fires this when no other mesh stopped propagation first.
-  const handlePlanePointerDown = useCallback(
-    (e: any) => {
-      // Belt-and-braces: if a mesh somehow already claimed the gesture,
-      // do not start a camera drag.
-      if (draggingRef.current) return;
+  // The background plane receives pointerdown on empty space.
+  const handlePlanePointerDown = (e: any) => {
+    const mode: 'orbit' | 'pan' =
+      e.button === 1 || e.button === 2 || e.shiftKey || e.ctrlKey || e.metaKey
+        ? 'pan' : 'orbit';
+    cameraDrag.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      mode,
+      moved: false,
+    };
+    lastInteraction.current = performance.now();
+  };
 
-      const mode: 'orbit' | 'pan' =
-        e.button === 1 || e.button === 2 || e.shiftKey || e.ctrlKey || e.metaKey
-          ? 'pan'
-          : 'orbit';
-
-      cameraDrag.current = {
-        x: e.clientX,
-        y: e.clientY,
-        mode,
-        moved: false,
-      };
-      lastInteraction.current = performance.now();
-    },
-    [draggingRef]
-  );
-
-  const handlePlaneClick = useCallback(() => {
-    if (lastCameraDragMoved.current) return;
+  const handlePlaneClick = () => {
+    if (lastDragMoved.current) return;
     onBackgroundClick?.();
-  }, [onBackgroundClick]);
+  };
 
   useFrame((_, delta) => {
-    const s = spherical.current;
     const t = target.current;
+    const c = current.current;
 
-    if (autoRotate && !cameraDrag.current && !draggingRef.current) {
+    if (autoRotate && !cameraDrag.current) {
       const idleMs = performance.now() - lastInteraction.current;
       if (idleMs > idleDelay * 1000) {
-        s.theta += delta * autoRotateSpeed;
+        t.theta += delta * autoRotateSpeed;
       }
     }
 
-    const x = t.x + s.radius * Math.sin(s.phi) * Math.cos(s.theta);
-    const y = t.y + s.radius * Math.cos(s.phi);
-    const z = t.z + s.radius * Math.sin(s.phi) * Math.sin(s.theta);
+    const k = 1 - Math.pow(0.0008, Math.min(delta, 0.1));
+    c.theta += (t.theta - c.theta) * k;
+    c.phi += (t.phi - c.phi) * k;
+    c.radius += (t.radius - c.radius) * k;
+    lookAt.current.lerp(lookAtTarget.current, k);
+
+    const x = lookAt.current.x + c.radius * Math.sin(c.phi) * Math.cos(c.theta);
+    const y = lookAt.current.y + c.radius * Math.cos(c.phi);
+    const z = lookAt.current.z + c.radius * Math.sin(c.phi) * Math.sin(c.theta);
 
     camera.position.set(x, y, z);
-    camera.lookAt(t);
+    camera.lookAt(lookAt.current);
   });
 
-  // The background plane. Always behind the scene. Invisible but raycastable.
-  // R3F's raycaster uses distance sorting and stopPropagation, so this plane
-  // only receives pointerdown when the user clicked empty space.
+  // Raycast target: a large box surrounding the whole scene.
+  //
+  // Why a box and not a plane: a plane becomes edge-on (or ends up behind
+  // the camera) whenever the camera orbits to look along that plane's
+  // normal axis. When that happens, the ray from the camera through the
+  // pointer misses the plane and camera drag dies silently.
+  //
+  // The box surrounds the camera from every angle. A ray from inside the
+  // box always hits exactly one of the six inner faces. BackSide renders
+  // only the inner surface, which is the one we want to raycast.
   return (
     <mesh
-      position={[0, 0, -900]}
+      position={[0, 0, 0]}
       onPointerDown={handlePlanePointerDown}
       onClick={handlePlaneClick}
     >
-      <planeGeometry args={[200000, 200000]} />
+      <boxGeometry args={[2000, 2000, 2000]} />
       <meshBasicMaterial
         transparent
         opacity={0}
         depthWrite={false}
-        depthTest={false}
-        side={THREE.DoubleSide}
+        side={THREE.BackSide}
       />
     </mesh>
   );

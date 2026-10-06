@@ -3,16 +3,20 @@ import { useState, type ReactNode } from 'react';
 export type InspectorTab = 'input' | 'inspect' | 'ai';
 
 export interface InspectorProps {
+  topStrip?: ReactNode;
   input: ReactNode;
   inspect: ReactNode;
   ai: ReactNode;
   initialTab?: InspectorTab;
 }
 
-export function Inspector({ input, inspect, ai, initialTab = 'input' }: InspectorProps) {
+export function Inspector({
+  topStrip, input, inspect, ai, initialTab = 'input',
+}: InspectorProps) {
   const [tab, setTab] = useState<InspectorTab>(initialTab);
   return (
     <div className="inspector">
+      {topStrip && <div className="inspector-strip-wrap">{topStrip}</div>}
       <div className="inspector-tabs">
         <TabButton active={tab === 'input'} onClick={() => setTab('input')}>Input</TabButton>
         <TabButton active={tab === 'inspect'} onClick={() => setTab('inspect')}>Inspect</TabButton>

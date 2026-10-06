@@ -79,6 +79,16 @@ export function PlayTab() {
   const [highlightedLigandAtom, setHighlightedLigandAtom] = useState<number | null>(null);
   const [binding, setBinding] = useState<BindingInfo | null>(null);
   const [docking, setDocking] = useState(false);
+  const [selectedLigandInstance, setSelectedLigandInstance] = useState<string | null>(null);
+  const [anchor, setAnchor] = useState<{
+    atomIndex: number;
+    position: [number, number, number];
+    color: number;
+  } | null>(null);
+  const [feedback, setFeedback] = useState<{
+    kind: 'ok' | 'err' | 'info';
+    message: string;
+  } | null>(null);
 
   const atomCoordsRef = useRef<Map<number, { x: number; y: number; z: number }>>(new Map());
   const lastLoggedProteinRef = useRef<string>('');
@@ -124,6 +134,13 @@ export function PlayTab() {
     void session.bridgeIn(payload.variant, payload.molecule).then(refreshActionCount);
   }, [pendingSendToPlay, clearPendingSendToPlay, session, refreshActionCount]);
 
+  const flash = (kind: 'ok' | 'err' | 'info', message: string, ms = 1800) => {
+    setFeedback({ kind, message });
+    window.setTimeout(() => {
+      setFeedback((f) => (f && f.kind === kind && f.message === message ? null : f));
+    }, ms);
+  };
+
   const handlePickProtein = (p: ProteinEntry) => {
     setProteinId(p.id);
     session.pickResidue(null);
@@ -156,33 +173,65 @@ export function PlayTab() {
     }
     if (!picked) return;
     atomCoordsRef.current.set(picked.index, picked.atom);
+    const pos: [number, number, number] = [picked.atom.x, picked.atom.y, picked.atom.z];
+
+    if (tool === 'cut') {
+      handleCut(picked.index);
+      flash('ok', `Cut at ${picked.residueOneLetter}${picked.residueNumber}`);
+      return;
+    }
+
+    if (tool === 'measure') {
+      if (!anchor) {
+        setAnchor({ atomIndex: picked.index, position: pos, color: 0xffaa00 });
+        flash('info', `Anchor: ${picked.residueOneLetter}${picked.residueNumber} — click the second residue`);
+      } else {
+        const a = atomCoordsRef.current.get(anchor.atomIndex);
+        const b = picked.atom;
+        if (a) {
+          const d = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+          setMeasureDistance(d);
+          setAnchor(null);
+          flash('ok', `Distance: ${d.toFixed(2)} Å`);
+        }
+      }
+      return;
+    }
+
+    if (tool === 'attach') {
+      if (!anchor) {
+        setAnchor({ atomIndex: picked.index, position: pos, color: 0xcc88ff });
+        flash('info', 'Click a residue on a different fragment');
+        return;
+      }
+      if (!segments || segments.length < 2) {
+        flash('err', 'Cut the chain first to create fragments');
+        return;
+      }
+      const findSeg = (idx: number) =>
+        segments.findIndex((seg) => idx >= seg.start && idx < seg.end);
+      const aSeg = findSeg(anchor.atomIndex);
+      const bSeg = findSeg(picked.index);
+      if (aSeg < 0 || bSeg < 0) {
+        flash('err', 'Could not locate fragments');
+        return;
+      }
+      if (aSeg === bSeg) {
+        flash('err', 'Both residues are in the same fragment');
+        return;
+      }
+      setSegments(mergeSegments(segments, anchor.atomIndex, picked.index));
+      setAnchor(null);
+      flash('ok', 'Fragments merged');
+      return;
+    }
 
     if (tool === 'bind') {
+      // Set / update the anchor. The user must click a ligand atom next.
+      setAnchor({ atomIndex: picked.index, position: pos, color: 0x66ff88 });
       setPendingProteinAtom(picked.index);
       setHighlightedLigandAtom(null);
-      return;
-    }
-    if (tool === 'measure') {
-      setMeasureAnchors((prev) => {
-        const next = prev.length >= 2 ? [picked.index] : [...prev, picked.index];
-        if (next.length === 2) {
-          const a = atomCoordsRef.current.get(next[0]);
-          const b = atomCoordsRef.current.get(next[1]);
-          if (a && b) setMeasureDistance(Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z));
-        } else setMeasureDistance(null);
-        return next;
-      });
-      return;
-    }
-    if (tool === 'attach') {
-      setBindAnchors((prev) => {
-        const next = prev.length >= 2 ? [picked.index] : [...prev, picked.index];
-        if (next.length === 2 && segments) {
-          setSegments(mergeSegments(segments, next[0], next[1]));
-          return [];
-        }
-        return next;
-      });
+      flash('info', `Anchor: ${picked.residueOneLetter}${picked.residueNumber} — click a ligand atom`);
       return;
     }
   };
@@ -202,6 +251,8 @@ export function PlayTab() {
 
   const handleRemoveLigand = (instanceId: string) => {
     setLigands((prev) => prev.filter((l) => l.instanceId !== instanceId));
+    setSelectedLigandInstance((cur) => (cur === instanceId ? null : cur));
+    setBinding((b) => (b && b.instanceId === instanceId ? null : b));
     void log.append({
       projectId, mode: 'play', actor: 'user', type: 'play.remove_ligand',
       payload: { instanceId }, timestamp: new Date().toISOString(),
@@ -222,10 +273,21 @@ export function PlayTab() {
 
   const handleDockNow = async () => {
     if (pendingProteinAtom === null || !pendingLigandInstance) return;
-    const placed = ligands.find((l) => l.instanceId === pendingLigandInstance);
+    await runDock(pendingLigandInstance, highlightedLigandAtom ?? 0);
+  };
+
+  const runDock = async (ligandInstanceId: string, ligandAtomIndex: number) => {
+    if (pendingProteinAtom === null) {
+      flash('err', 'Click a protein residue first');
+      return;
+    }
+    const placed = ligands.find((l) => l.instanceId === ligandInstanceId);
     if (!placed) return;
     const proteinAtom = atomCoordsRef.current.get(pendingProteinAtom);
-    if (!proteinAtom) return;
+    if (!proteinAtom) {
+      flash('err', 'Could not locate the anchored protein residue');
+      return;
+    }
 
     setDocking(true);
     try {
@@ -297,9 +359,18 @@ export function PlayTab() {
     }
   };
 
-  const handleLigandAtomClick = (instanceId: string, atomIndex: number) => {
+  const handleLigandAtomClick = async (instanceId: string, atomIndex: number) => {
+    setSelectedLigandInstance(instanceId);
     setPendingLigandInstance(instanceId);
     setHighlightedLigandAtom(atomIndex);
+
+    if (tool === 'bind') {
+      if (pendingProteinAtom === null) {
+        flash('err', 'Click a protein residue first');
+        return;
+      }
+      await runDock(instanceId, atomIndex);
+    }
   };
 
   const handleCut = (atomIndex: number) => {
@@ -322,7 +393,32 @@ export function PlayTab() {
     setPendingProteinAtom(null);
     setPendingLigandInstance(null);
     setHighlightedLigandAtom(null);
+    setAnchor(null);
+    setFeedback(null);
   };
+
+  // Esc: full cancel. Returns to Select and clears all selection.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag && ['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
+      if (e.key === 'Escape') {
+        setTool('select');
+        setAnchor(null);
+        setFeedback(null);
+        setPendingProteinAtom(null);
+        setPendingLigandInstance(null);
+        setHighlightedLigandAtom(null);
+        setSelectedLigandInstance(null);
+        setMeasureAnchors([]);
+        setBindAnchors([]);
+        setMeasureDistance(null);
+        session.pickResidue(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [session]);
 
   const handleSequenceClick = (index: number) => {
     const a = atoms[index];
@@ -333,6 +429,20 @@ export function PlayTab() {
       atom: { x: a.x, y: a.y, z: a.z },
     });
   };
+
+  // Delete key removes the currently selected ligand.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag && ['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedLigandInstance) {
+        e.preventDefault();
+        handleRemoveLigand(selectedLigandInstance);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedLigandInstance]);
 
   const aiName = getCoScientist().name;
 
@@ -504,6 +614,15 @@ export function PlayTab() {
           pickedResidueNumber={session.picked?.residueNumber ?? null}
           mutatedResidueNumber={session.variant?.position ?? null}
           onPickResidue={handlePickResidue}
+          onBackgroundClick={() => {
+            session.pickResidue(null);
+            setSelectedLigandInstance(null);
+            setPendingLigandInstance(null);
+            setHighlightedLigandAtom(null);
+            setAnchor(null);
+            setPendingProteinAtom(null);
+            setFeedback(null);
+          }}
           onSourceKnown={setSource}
           onAtomsLoaded={setAtomCount}
           tool={tool}
@@ -518,6 +637,8 @@ export function PlayTab() {
           onLigandDragEnd={handleLigandDragEnd}
           highlightedLigandAtom={highlightedLigandAtom}
           highlightedLigandInstance={pendingLigandInstance}
+          selectedLigandInstance={selectedLigandInstance}
+          pendingAnchor={anchor ? { position: anchor.position, color: anchor.color } : null}
           onLigandAtomClick={handleLigandAtomClick}
           bindingLink={
             binding
@@ -540,6 +661,20 @@ export function PlayTab() {
           )}
         </div>
         <SecondaryStructureLegend />
+        {tool !== 'select' && (
+          <div className={`tool-banner ${feedback?.kind ?? 'info'}`}>
+            <span className="tool-banner-tool">{tool}</span>
+            <span className="tool-banner-msg">
+              {feedback?.message ?? (
+                tool === 'cut' ? 'Click a residue to split the chain' :
+                tool === 'measure' ? (anchor ? 'Click the second residue' : 'Click the first residue') :
+                tool === 'attach' ? (anchor ? 'Click a residue on a different fragment' : 'Click a residue') :
+                tool === 'bind' ? (anchor ? 'Click a ligand atom to dock' : 'Click a protein residue') :
+                ''
+              )}
+            </span>
+          </div>
+        )}
         <ToolBelt
           tool={tool}
           onToolChange={handleToolChange}
@@ -548,6 +683,23 @@ export function PlayTab() {
           segmentCount={segments?.length}
           onResetSegments={() => { setSegments(null); setCutCount(0); }}
         />
+        {selectedLigandInstance && (() => {
+          const sel = ligands.find((l) => l.instanceId === selectedLigandInstance);
+          if (!sel) return null;
+          return (
+            <div className="ligand-selected-panel">
+              <span className="ligand-selected-name">{sel.entry.name}</span>
+              <span className="ligand-selected-hint">
+                drag to move | press Delete to remove
+              </span>
+              <button
+                className="ligand-selected-delete"
+                onClick={() => handleRemoveLigand(sel.instanceId)}
+                title="Remove ligand"
+              >x</button>
+            </div>
+          );
+        })()}
       </div>
 
       <Inspector input={inputTab} inspect={inspectTab} ai={aiTab} />

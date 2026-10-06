@@ -75,5 +75,5 @@ export function AmbientParticles({ count = 320, radius = 130 }: AmbientParticles
     }
   });
 
-  return <points ref={ref} geometry={geom} material={material} />;
+  return <points ref={ref} geometry={geom} material={material} raycast={() => null} />;
 }

@@ -34,3 +34,13 @@ data/reference/*
 
 # Cached PDB files (prime with scripts/fetch-pdb.sh)
 apps/desktop/public/*.pdb
+
+# Engine caches (regenerable, never commit)
+packages/engines-py/.ddg_cache/
+packages/engines-py/.pdb_cache/
+packages/engines-py/.thermompnn/
+packages/engines-py/.venv/
+
+# Atomic-write temp files
+*.tsx.tmp
+*.ts.tmp

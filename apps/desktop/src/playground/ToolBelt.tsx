@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type { PlaygroundTool } from '../scene/ProteinViewer';
 
 export interface ToolBeltProps {
@@ -13,53 +14,61 @@ const TOOLS: Array<{
   id: PlaygroundTool;
   label: string;
   icon: string;
+  key: string;
   hint: string;
 }> = [
-  { id: 'select',  label: 'Select',  icon: '☉', hint: 'Click a residue to pick it' },
-  { id: 'cut',     label: 'Cut',     icon: '✂', hint: 'Click a residue to split the chain' },
-  { id: 'attach',  label: 'Attach',  icon: '⌇', hint: 'Click two residues on different fragments' },
-  { id: 'measure', label: 'Measure', icon: '↔', hint: 'Click two residues to see the distance' },
-  { id: 'bind',    label: 'Bind',    icon: '⚯', hint: 'Click two residues to bind them' },
+  { id: 'select',  label: 'select',  icon: '☉', key: 'V', hint: 'pick a residue' },
+  { id: 'cut',     label: 'cut',     icon: '✂', key: 'X', hint: 'split the chain at a residue' },
+  { id: 'attach',  label: 'attach',  icon: '⌇', key: 'A', hint: 'merge two fragments' },
+  { id: 'measure', label: 'measure', icon: '↔', key: 'M', hint: 'distance between two residues' },
+  { id: 'bind',    label: 'bind',    icon: '⚯', key: 'B', hint: 'dock a ligand into a pocket' },
 ];
 
 export function ToolBelt({
-  tool,
-  onToolChange,
-  measureDistance,
-  onClearMeasure,
-  segmentCount,
-  onResetSegments,
+  tool, onToolChange, measureDistance, onClearMeasure, segmentCount, onResetSegments,
 }: ToolBeltProps) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+      const t = TOOLS.find((x) => x.key.toLowerCase() === e.key.toLowerCase());
+      if (t) { e.preventDefault(); onToolChange(t.id); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onToolChange]);
+
   const activeHint = TOOLS.find((t) => t.id === tool)?.hint ?? '';
 
   return (
-    <div className="tool-belt">
-      <div className="tool-belt-tools">
+    <div className="tool-strip">
+      <div className="tool-strip-tools">
         {TOOLS.map((t) => (
           <button
             key={t.id}
-            className={`tool-btn ${tool === t.id ? 'active' : ''}`}
+            className={`tool-strip-btn ${tool === t.id ? 'active' : ''}`}
             onClick={() => onToolChange(t.id)}
-            title={t.hint}
+            title={`${t.label} (${t.key}) — ${t.hint}`}
           >
-            <span className="tool-icon">{t.icon}</span>
-            <span className="tool-label">{t.label}</span>
+            <span className="tool-strip-icon">{t.icon}</span>
+            <span className="tool-strip-label">{t.label}</span>
+            <span className="tool-strip-key">{t.key}</span>
           </button>
         ))}
       </div>
 
-      <div className="tool-belt-info">
-        <span className="tool-hint">{activeHint}</span>
+      <div className="tool-strip-info">
+        <span className="tool-strip-hint">{activeHint}</span>
         {typeof measureDistance === 'number' && (
-          <span className="tool-readout">
+          <span className="tool-strip-readout">
             {measureDistance.toFixed(2)} Å
-            <button className="tool-clear" onClick={onClearMeasure}>×</button>
+            <button className="tool-strip-clear" onClick={onClearMeasure}>×</button>
           </span>
         )}
         {typeof segmentCount === 'number' && segmentCount > 1 && (
-          <span className="tool-readout">
-            {segmentCount} fragments
-            <button className="tool-clear" onClick={onResetSegments}>reset</button>
+          <span className="tool-strip-readout">
+            {segmentCount} frag
+            <button className="tool-strip-clear" onClick={onResetSegments}>↺</button>
           </span>
         )}
       </div>

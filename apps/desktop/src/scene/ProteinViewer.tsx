@@ -2,13 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
-  loadPDB, parsePDBCA, centerAtoms,
-  type CAAtom, type PDBSource,
+  loadPDB, parsePDBCA, centerAtoms, type CAAtom, type PDBSource,
 } from './pdbLoader';
 import { CameraControls } from './CameraControls';
 import { BackboneRibbon } from './BackboneRibbon';
 import { SideChains } from './SideChains';
 import { AmbientParticles } from './AmbientParticles';
+import { PendingAnchor } from './PendingAnchor';
 import type { Segment } from './segments';
 import { LigandMesh } from '../playground/LigandMesh';
 import type { LigandEntry } from '../data/ligandLibrary';
@@ -27,6 +27,7 @@ export interface ProteinViewerProps {
   pickedResidueNumber: number | null;
   mutatedResidueNumber: number | null;
   onPickResidue: (picked: PickedResidue | null) => void;
+  onBackgroundClick?: () => void;
   onSourceKnown?: (source: PDBSource) => void;
   onAtomsLoaded?: (count: number) => void;
   tool?: PlaygroundTool;
@@ -36,43 +37,32 @@ export interface ProteinViewerProps {
   bindAnchors?: number[];
   placedLigands?: PlacedLigandRender[];
   onLigandPositionChange?: (instanceId: string, p: [number, number, number]) => void;
-  onLigandDragStart?: (instanceId: string) => void;
   onLigandDragEnd?: (instanceId: string, p: [number, number, number]) => void;
   highlightedLigandAtom?: number | null;
   highlightedLigandInstance?: string | null;
+  selectedLigandInstance?: string | null;
   onLigandAtomClick?: (instanceId: string, atomIndex: number) => void;
   bindingLink?: { proteinAtomIndex: number; ligandAtomIndex: number; ligandInstanceId: string } | null;
+  pendingAnchor?: { position: [number, number, number]; color: number } | null;
 }
 
 export function ProteinViewer({
-  pdbId,
-  pickedResidueNumber,
-  mutatedResidueNumber,
-  onPickResidue,
-  onSourceKnown,
-  onAtomsLoaded,
-  tool = 'select',
-  segments,
-  onCut,
-  measureAnchors = [],
-  bindAnchors = [],
-  placedLigands = [],
-  onLigandPositionChange,
-  onLigandDragStart,
-  onLigandDragEnd,
-  highlightedLigandAtom = null,
-  highlightedLigandInstance = null,
-  onLigandAtomClick,
-  bindingLink,
+  pdbId, pickedResidueNumber, mutatedResidueNumber, onPickResidue,
+  onBackgroundClick,
+  onSourceKnown, onAtomsLoaded, tool = 'select', segments, onCut,
+  measureAnchors = [], bindAnchors = [],
+  placedLigands = [], onLigandPositionChange, onLigandDragEnd,
+  highlightedLigandAtom = null, highlightedLigandInstance = null,
+  selectedLigandInstance = null,
+  onLigandAtomClick, bindingLink, pendingAnchor = null,
 }: ProteinViewerProps) {
   const [atoms, setAtoms] = useState<CAAtom[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const draggingRef = useRef(false);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setAtoms(null);
-    setError(null);
+    setAtoms(null); setError(null);
     loadPDB(pdbId)
       .then(({ text, source }) => {
         if (cancelled) return;
@@ -81,9 +71,7 @@ export function ProteinViewer({
         setAtoms(parsed);
         onAtomsLoaded?.(parsed.length);
       })
-      .catch((e) => {
-        if (!cancelled) setError(String(e?.message ?? e));
-      });
+      .catch((e) => { if (!cancelled) setError(String(e?.message ?? e)); });
     return () => { cancelled = true; };
   }, [pdbId, onSourceKnown, onAtomsLoaded]);
 
@@ -95,7 +83,6 @@ export function ProteinViewer({
       </div>
     );
   }
-
   if (!atoms) return <div className="placeholder">Loading {pdbId}…</div>;
 
   const bindingLigand = bindingLink
@@ -114,7 +101,6 @@ export function ProteinViewer({
         dpr={[1, 2]}
       >
         <fog attach="fog" args={['#04060a', 220, 520]} />
-
         <hemisphereLight args={[0x6c9fff, 0x1a0e2a, 0.85]} />
         <directionalLight position={[40, 60, 40]} intensity={1.6} color={0xfff0d8} />
         <directionalLight position={[-50, -30, -30]} intensity={0.55} color={0x4a90e2} />
@@ -124,9 +110,10 @@ export function ProteinViewer({
         <AmbientParticles count={340} radius={140} />
 
         <CameraControls
-          draggingRef={draggingRef}
           onBackgroundClick={() => {
-            if (tool === 'select') onPickResidue(null);
+            if (tool !== 'select') return;
+            if (onBackgroundClick) onBackgroundClick();
+            else onPickResidue(null);
           }}
           autoRotate={placedLigands.length === 0}
           autoRotateSpeed={0.12}
@@ -134,15 +121,26 @@ export function ProteinViewer({
         />
 
         <group>
-          <BackboneRibbon atoms={atoms} />
+          <BackboneRibbon
+            atoms={atoms}
+            onHoverAtom={setHoveredIndex}
+            onClickAtom={(index) => {
+              const a = atoms[index];
+              if (!a) return;
+              if (tool === 'cut' && onCut) { onCut(index); return; }
+              onPickResidue({
+                index,
+                residueNumber: a.residueNumber,
+                residueOneLetter: a.residueOneLetter,
+                atom: { x: a.x, y: a.y, z: a.z },
+              });
+            }}
+          />
           <SideChains
             atoms={atoms}
             pickedResidueNumber={pickedResidueNumber}
             mutatedResidueNumber={mutatedResidueNumber}
-            draggingRef={draggingRef}
-            onPickResidue={onPickResidue}
-            onCut={onCut}
-            tool={tool}
+            hoveredIndex={hoveredIndex}
           />
         </group>
 
@@ -153,21 +151,18 @@ export function ProteinViewer({
             ligand={pl.ligand}
             position={pl.position}
             onPositionChange={onLigandPositionChange ?? (() => {})}
-            onDragStart={(id) => {
-              draggingRef.current = true;
-              onLigandDragStart?.(id);
-            }}
-            onDragEnd={(id, p) => {
-              draggingRef.current = false;
-              onLigandDragEnd?.(id, p);
-            }}
+            onDragEnd={(id, p) => onLigandDragEnd?.(id, p)}
             onAtomClick={onLigandAtomClick}
             highlightedAtom={
               highlightedLigandInstance === pl.instanceId ? highlightedLigandAtom : null
             }
-            draggable
+            selected={selectedLigandInstance === pl.instanceId}
           />
         ))}
+
+        {pendingAnchor && (
+          <PendingAnchor position={pendingAnchor.position} color={pendingAnchor.color} />
+        )}
 
         <AnchorLine atoms={atoms} indices={measureAnchors} color={0xffaa00} />
         <AnchorLine atoms={atoms} indices={bindAnchors} color={0xcc88ff} />
@@ -192,20 +187,17 @@ function AnchorLine({ atoms, indices, color }: { atoms: CAAtom[]; indices: numbe
     const a = atoms[indices[0]]; const b = atoms[indices[1]];
     if (!a || !b) return null;
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute([a.x, a.y, a.z, b.x, b.y, b.z], 3));
+    g.setAttribute('position', new THREE.Float32BufferAttribute([a.x,a.y,a.z,b.x,b.y,b.z], 3));
     return new THREE.Line(g, new THREE.LineBasicMaterial({ color, linewidth: 2 }));
   }, [atoms, indices, color]);
-  if (!line) return null;
-  return <primitive object={line} />;
+  return line ? <primitive object={line} /> : null;
 }
 
 function BindingLine({
   atoms, ligand, proteinAtomIndex, ligandAtomIndex, ligandPosition,
 }: {
-  atoms: CAAtom[];
-  ligand: LigandEntry;
-  proteinAtomIndex: number;
-  ligandAtomIndex: number;
+  atoms: CAAtom[]; ligand: LigandEntry;
+  proteinAtomIndex: number; ligandAtomIndex: number;
   ligandPosition: [number, number, number];
 }) {
   const line = useMemo(() => {
@@ -219,6 +211,5 @@ function BindingLine({
     ], 3));
     return new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0x66ff88, linewidth: 3 }));
   }, [atoms, ligand, proteinAtomIndex, ligandAtomIndex, ligandPosition]);
-  if (!line) return null;
-  return <primitive object={line} />;
+  return line ? <primitive object={line} /> : null;
 }
