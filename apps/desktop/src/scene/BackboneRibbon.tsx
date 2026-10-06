@@ -3,6 +3,7 @@ import type { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { CAAtom } from './pdbLoader';
 import { assignSecondaryStructure, type SecondaryStructure } from './secondaryStructure';
+import type { Segment } from './segments';
 
 const SS_COLORS: Record<SecondaryStructure, number> = {
   helix: 0x5aa9ff, sheet: 0xf0b64a, coil: 0x6a7a92,
@@ -28,13 +29,14 @@ function splitRuns(ss: SecondaryStructure[]): Run[] {
 
 export interface BackboneRibbonProps {
   atoms: CAAtom[];
+  segments?: Segment[];
   atomColors?: Map<number, number>;
   onHoverAtom?: (index: number | null) => void;
   onClickAtom?: (index: number) => void;
 }
 
 export function BackboneRibbon({
-  atoms, atomColors, onHoverAtom, onClickAtom,
+  atoms, atomColors, segments, onHoverAtom, onClickAtom,
 }: BackboneRibbonProps) {
   const ss = useMemo(() => assignSecondaryStructure(atoms), [atoms]);
   const runs = useMemo(() => splitRuns(ss), [ss]);
@@ -79,8 +81,26 @@ export function BackboneRibbon({
     if (idx !== null) onClickAtom(idx);
   }, [onClickAtom, nearestAtom]);
 
+  // Intersect the secondary-structure runs with the user's segments.
+  // Each segment is a connected piece of the chain; a cut between two
+  // segments produces a visible gap.
+  const pieces = useMemo(() => {
+    const eff = segments && segments.length > 0
+      ? segments
+      : [{ start: 0, end: atoms.length }];
+    const out: Run[] = [];
+    for (const run of runs) {
+      for (const seg of eff) {
+        const start = Math.max(run.start, seg.start);
+        const end = Math.min(run.end, seg.end);
+        if (end - start >= 2) out.push({ ss: run.ss, start, end });
+      }
+    }
+    return out;
+  }, [runs, segments, atoms.length]);
+
   const tubes = useMemo(() => {
-    return runs.map((run) => {
+    return pieces.map((run) => {
       const points: THREE.Vector3[] = [];
       for (let i = run.start; i < run.end; i++) {
         const a = atoms[i];
@@ -114,7 +134,7 @@ export function BackboneRibbon({
       });
       return { geometry, material, key: `run-${run.start}-${run.end}` };
     }).filter(Boolean) as Array<{ geometry: THREE.TubeGeometry; material: THREE.MeshStandardMaterial; key: string }>;
-  }, [runs, atoms, atomColors]);
+  }, [pieces, atoms, atomColors]);
 
   return (
     <group>

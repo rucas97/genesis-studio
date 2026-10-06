@@ -708,22 +708,21 @@ export function PlayTab() {
               : null
           }
           lastKey={lastKey}
+          hint={
+            tool === 'select' ? 'Click a residue to pick it. Drag empty space to orbit.'
+            : tool === 'cut' ? 'Click a residue to split the chain there.'
+            : tool === 'attach' ? (anchor ? 'Click a residue on a different fragment.' : 'Click the first residue.')
+            : tool === 'measure' ? (anchor ? 'Click the second residue.' : 'Click the first residue.')
+            : tool === 'bind' ? (anchor ? 'Click a ligand atom to dock.' : 'Click a protein residue.')
+            : null
+          }
+          measureDistance={measureDistance}
+          fragmentCount={segments?.length ?? null}
+          feedback={feedback}
+          onClearMeasure={() => { setMeasureAnchors([]); setMeasureDistance(null); }}
+          onResetSegments={() => { setSegments(null); setCutCount(0); }}
         />
         <SecondaryStructureLegend />
-        {tool !== 'select' && (
-          <div className={`tool-banner ${feedback?.kind ?? 'info'}`}>
-            <span className="tool-banner-tool">{tool}</span>
-            <span className="tool-banner-msg">
-              {feedback?.message ?? (
-                tool === 'cut' ? 'Click a residue to split the chain' :
-                tool === 'measure' ? (anchor ? 'Click the second residue' : 'Click the first residue') :
-                tool === 'attach' ? (anchor ? 'Click a residue on a different fragment' : 'Click a residue') :
-                tool === 'bind' ? (anchor ? 'Click a ligand atom to dock' : 'Click a protein residue') :
-                ''
-              )}
-            </span>
-          </div>
-        )}
         <ToolBelt
           tool={tool}
           onToolChange={handleToolChange}

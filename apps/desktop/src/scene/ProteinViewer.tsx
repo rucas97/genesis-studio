@@ -123,6 +123,7 @@ export function ProteinViewer({
         <group>
           <BackboneRibbon
             atoms={atoms}
+            segments={segments}
             onHoverAtom={setHoveredIndex}
             onClickAtom={(index) => {
               const a = atoms[index];

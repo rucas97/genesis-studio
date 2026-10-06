@@ -2275,3 +2275,83 @@ button.send-to-play:hover {
   max-width: 110px;
 }
 .live-inspect-value.accent { color: #66ccff; }
+
+/* ============================================================
+   Live inspect footer (hint + readouts + feedback)
+   ============================================================ */
+
+.live-inspect-footer {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #141a1f;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.live-inspect-hint {
+  font-size: 10px;
+  line-height: 1.45;
+  color: #778;
+}
+
+.live-inspect-readout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 10px;
+}
+
+.live-inspect-readout-label {
+  color: #556;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 9px;
+  min-width: 60px;
+}
+
+.live-inspect-readout-value {
+  color: #66ccff;
+  font-size: 11px;
+  flex: 1;
+}
+
+.live-inspect-readout-clear {
+  background: transparent;
+  border: 1px solid #2a3a44;
+  color: #667;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1;
+}
+.live-inspect-readout-clear:hover {
+  color: #ff8888;
+  border-color: #ff8888;
+}
+
+.live-inspect-feedback {
+  font-size: 11px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  line-height: 1.35;
+}
+.live-inspect-feedback.info {
+  color: #a8b4bc;
+  border-color: #1f262c;
+  background: #0d1218;
+}
+.live-inspect-feedback.ok {
+  color: #a8f0b8;
+  border-color: #2a5a3a;
+  background: #0a1810;
+}
+.live-inspect-feedback.err {
+  color: #f0a8a8;
+  border-color: #5a2a2a;
+  background: #180a0a;
+}

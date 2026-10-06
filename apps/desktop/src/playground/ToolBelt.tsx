@@ -24,9 +24,7 @@ const TOOLS: Array<{
   { id: 'bind',    label: 'bind',    icon: '⚯', key: 'B', hint: 'dock a ligand into a pocket' },
 ];
 
-export function ToolBelt({
-  tool, onToolChange, measureDistance, onClearMeasure, segmentCount, onResetSegments,
-}: ToolBeltProps) {
+export function ToolBelt({ tool, onToolChange }: ToolBeltProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -37,8 +35,6 @@ export function ToolBelt({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onToolChange]);
-
-  const activeHint = TOOLS.find((t) => t.id === tool)?.hint ?? '';
 
   return (
     <div className="tool-strip">
@@ -55,22 +51,6 @@ export function ToolBelt({
             <span className="tool-strip-key">{t.key}</span>
           </button>
         ))}
-      </div>
-
-      <div className="tool-strip-info">
-        <span className="tool-strip-hint">{activeHint}</span>
-        {typeof measureDistance === 'number' && (
-          <span className="tool-strip-readout">
-            {measureDistance.toFixed(2)} Å
-            <button className="tool-strip-clear" onClick={onClearMeasure}>×</button>
-          </span>
-        )}
-        {typeof segmentCount === 'number' && segmentCount > 1 && (
-          <span className="tool-strip-readout">
-            {segmentCount} frag
-            <button className="tool-strip-clear" onClick={onResetSegments}>↺</button>
-          </span>
-        )}
       </div>
     </div>
   );
